@@ -5,24 +5,18 @@ compatibility_date = "2025-10-03"
 compatibility_flags = ["nodejs_compat"]
 
 # Account details
-account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"  # Get from: wrangler whoami
+account_id = "b68132a02e46f8cc02bcf9c5745a72b9"
 
 # D1 Database (Sessions, Audit Logs, Cache)
 [[d1_databases]]
 binding = "DB"
 database_name = "hartzell_hr"
-database_id = "YOUR_D1_DATABASE_ID"  # Generated when you run: wrangler d1 create hartzell_hr
-preview_database_id = "YOUR_D1_PREVIEW_ID"
+database_id = "a9a002e6-d7fb-4067-a2b2-212bf295ef28"
 
 # KV Namespace (Redis-like caching for rate limiting & employee data cache)
 [[kv_namespaces]]
 binding = "CACHE"
-id = "YOUR_KV_NAMESPACE_ID"  # Generated when you run: wrangler kv:namespace create CACHE
-preview_id = "YOUR_KV_PREVIEW_ID"
-
-# Analytics Engine (Optional - for tracking)
-[[analytics_engine_datasets]]
-binding = "ANALYTICS"
+id = "ae6971a1e8f746d4a39687a325f5dd2b"
 
 # R2 Storage (Optional - for document storage if needed later)
 # [[r2_buckets]]
@@ -67,17 +61,6 @@ routes = [
 [env.development]
 name = "hartzell-hr-center-dev"
 
-# Build configuration (for Next.js or other frameworks)
-[build]
-command = "npm run build"
-
-[build.upload]
-format = "service-worker"
-
 # Observability
 [observability]
 enabled = true
-
-# Limits
-[limits]
-cpu_ms = 50  # 50ms CPU time per request
