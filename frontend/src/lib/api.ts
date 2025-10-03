@@ -71,9 +71,14 @@ class ApiClient {
   }
 
   async getSession(): Promise<{ valid: boolean; session?: SessionData }> {
-    return this.request<{ valid: boolean; session?: SessionData }>(
-      '/auth/session'
-    );
+    try {
+      return await this.request<{ valid: boolean; session?: SessionData }>(
+        '/auth/session'
+      );
+    } catch (err) {
+      // 401 is expected when not logged in - return invalid session instead of throwing
+      return { valid: false };
+    }
   }
 
   // Employee
