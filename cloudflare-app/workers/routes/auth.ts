@@ -331,8 +331,8 @@ auth.get('/session', async (c) => {
   }
 
   return c.json({
-    success: true,
-    employee: {
+    valid: true,
+    session: {
       name: session.name,
       email: session.email,
       role: session.role,
