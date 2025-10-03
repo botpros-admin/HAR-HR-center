@@ -17,7 +17,24 @@ const app = new Hono<{ Bindings: Env }>();
 // Middleware
 app.use('*', logger());
 app.use('/api/*', cors({
-  origin: ['https://hartzell.work', 'http://localhost:3000'],
+  origin: (origin) => {
+    const allowedOrigins = [
+      'https://hartzell.work',
+      'http://localhost:3000',
+    ];
+
+    // Allow any Cloudflare Pages deployment
+    if (origin.endsWith('.hartzell-hr-frontend.pages.dev')) {
+      return origin;
+    }
+
+    // Check exact matches
+    if (allowedOrigins.includes(origin)) {
+      return origin;
+    }
+
+    return allowedOrigins[0]; // Default fallback
+  },
   credentials: true,
 }));
 
