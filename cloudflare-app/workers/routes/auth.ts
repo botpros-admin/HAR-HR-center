@@ -145,7 +145,7 @@ auth.post('/login', async (c) => {
         },
         requiresSSN: false
       }, 200, {
-        'Set-Cookie': `session=${session.id}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${env.SESSION_MAX_AGE}`
+        'Set-Cookie': `session=${session.id}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${env.SESSION_MAX_AGE}`
       });
     }
 
@@ -306,7 +306,7 @@ auth.post('/logout', async (c) => {
   }
 
   return c.json({ success: true }, 200, {
-    'Set-Cookie': 'session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0'
+    'Set-Cookie': 'session=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0'
   });
 });
 
