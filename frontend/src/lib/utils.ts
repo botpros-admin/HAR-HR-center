@@ -5,9 +5,15 @@ export function cn(...inputs: ClassValue[]) {
   return clsx(inputs);
 }
 
-export function formatDate(date: string | Date, formatStr: string = 'MMM d, yyyy'): string {
-  const dateObj = typeof date === 'string' ? parseISO(date) : date;
-  return format(dateObj, formatStr);
+export function formatDate(date: string | Date | null | undefined, formatStr: string = 'MMM d, yyyy'): string {
+  if (!date) return 'Not specified';
+
+  try {
+    const dateObj = typeof date === 'string' ? parseISO(date) : date;
+    return format(dateObj, formatStr);
+  } catch (error) {
+    return 'Invalid date';
+  }
 }
 
 export function formatRelativeTime(date: string | Date): string {
