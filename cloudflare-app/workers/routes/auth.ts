@@ -135,6 +135,7 @@ auth.post('/login', async (c) => {
 
       return c.json({
         success: true,
+        sessionToken: session.id,
         session: {
           id: session.id,
           employee: {
@@ -144,8 +145,6 @@ auth.post('/login', async (c) => {
           }
         },
         requiresSSN: false
-      }, 200, {
-        'Set-Cookie': `session=${session.id}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${env.SESSION_MAX_AGE}`
       });
     }
 
@@ -264,6 +263,7 @@ auth.post('/verify-ssn', async (c) => {
 
     return c.json({
       success: true,
+      sessionToken: session.id,
       session: {
         id: session.id,
         employee: {
@@ -272,8 +272,6 @@ auth.post('/verify-ssn', async (c) => {
           role: session.role
         }
       }
-    }, 200, {
-      'Set-Cookie': `session=${session.id}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${env.SESSION_MAX_AGE}`
     });
 
   } catch (error) {
@@ -287,10 +285,16 @@ auth.post('/verify-ssn', async (c) => {
  */
 auth.post('/logout', async (c) => {
   const env = c.env;
-  const sessionId = c.req.header('Cookie')
-    ?.split('; ')
-    .find(row => row.startsWith('session='))
-    ?.split('=')[1];
+
+  // Try Authorization header first, then fall back to cookie
+  let sessionId = c.req.header('Authorization')?.replace('Bearer ', '');
+
+  if (!sessionId) {
+    sessionId = c.req.header('Cookie')
+      ?.split('; ')
+      .find(row => row.startsWith('session='))
+      ?.split('=')[1];
+  }
 
   if (sessionId) {
     // Delete session from D1
@@ -305,9 +309,7 @@ auth.post('/logout', async (c) => {
     });
   }
 
-  return c.json({ success: true }, 200, {
-    'Set-Cookie': 'session=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0'
-  });
+  return c.json({ success: true });
 });
 
 /**
@@ -316,10 +318,16 @@ auth.post('/logout', async (c) => {
  */
 auth.get('/session', async (c) => {
   const env = c.env;
-  const sessionId = c.req.header('Cookie')
-    ?.split('; ')
-    .find(row => row.startsWith('session='))
-    ?.split('=')[1];
+
+  // Try Authorization header first, then fall back to cookie
+  let sessionId = c.req.header('Authorization')?.replace('Bearer ', '');
+
+  if (!sessionId) {
+    sessionId = c.req.header('Cookie')
+      ?.split('; ')
+      .find(row => row.startsWith('session='))
+      ?.split('=')[1];
+  }
 
   if (!sessionId) {
     return c.json({ error: 'No session' }, 401);

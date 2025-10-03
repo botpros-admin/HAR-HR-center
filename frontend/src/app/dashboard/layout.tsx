@@ -28,6 +28,7 @@ export default function DashboardLayout({
 
   const handleLogout = async () => {
     await api.logout();
+    localStorage.removeItem('sessionToken');
     router.push('/login');
   };
 

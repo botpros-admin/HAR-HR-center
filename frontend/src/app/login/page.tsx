@@ -49,6 +49,10 @@ export default function LoginPage() {
         setPreAuthSession(response.preAuthSession!);
         setStep('ssn');
       } else if (response.session) {
+        // Store session token in localStorage
+        if (response.sessionToken) {
+          localStorage.setItem('sessionToken', response.sessionToken);
+        }
         router.push('/dashboard');
       }
     } catch (err: any) {
@@ -80,6 +84,10 @@ export default function LoginPage() {
       });
 
       if (response.success) {
+        // Store session token in localStorage
+        if (response.sessionToken) {
+          localStorage.setItem('sessionToken', response.sessionToken);
+        }
         router.push('/dashboard');
       }
     } catch (err) {

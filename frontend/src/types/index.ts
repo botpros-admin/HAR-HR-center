@@ -27,6 +27,7 @@ export interface LoginResponse {
   requiresCaptcha?: boolean;
   failedAttempts?: number;
   preAuthSession?: string;
+  sessionToken?: string;
   session?: SessionData & { sessionId: string };
   error?: string;
 }
@@ -38,6 +39,7 @@ export interface VerifySSNRequest {
 
 export interface VerifySSNResponse {
   success: boolean;
+  sessionToken?: string;
   session: SessionData & { sessionId: string };
   error?: string;
 }

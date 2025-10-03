@@ -26,13 +26,23 @@ class ApiClient {
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
 
+    // Get session token from localStorage
+    const sessionToken = typeof window !== 'undefined' ? localStorage.getItem('sessionToken') : null;
+
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(options.headers as Record<string, string>),
+    };
+
+    // Add Authorization header if session token exists
+    if (sessionToken) {
+      headers['Authorization'] = `Bearer ${sessionToken}`;
+    }
+
     const response = await fetch(url, {
       ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers,
-      },
-      credentials: 'include', // Important for cookies
+      headers,
+      credentials: 'include', // Still include for backwards compatibility
     });
 
     const data = await response.json().catch(() => ({
