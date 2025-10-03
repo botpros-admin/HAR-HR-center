@@ -35,14 +35,18 @@ class ApiClient {
       credentials: 'include', // Important for cookies
     });
 
+    const data = await response.json().catch(() => ({
+      error: 'Request failed',
+    }));
+
     if (!response.ok) {
-      const error = await response.json().catch(() => ({
-        error: 'Request failed',
-      }));
-      throw new Error(error.error || `HTTP ${response.status}`);
+      // Throw an error with the full response data
+      const error: any = new Error(data.error || `HTTP ${response.status}`);
+      error.response = data; // Preserve the full response (e.g., requiresCaptcha)
+      throw error;
     }
 
-    return response.json();
+    return data;
   }
 
   // Authentication

@@ -51,11 +51,17 @@ export default function LoginPage() {
       } else if (response.session) {
         router.push('/dashboard');
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Login failed');
-      setFailedAttempts((prev) => prev + 1);
-      if (failedAttempts >= 2) {
+    } catch (err: any) {
+      // Check if error contains requiresCaptcha flag
+      if (err?.response?.requiresCaptcha) {
         setShowCaptcha(true);
+        setError('Please complete the CAPTCHA verification');
+      } else {
+        setError(err instanceof Error ? err.message : 'Login failed');
+        setFailedAttempts((prev) => prev + 1);
+        if (failedAttempts >= 2) {
+          setShowCaptcha(true);
+        }
       }
     } finally {
       setLoading(false);
