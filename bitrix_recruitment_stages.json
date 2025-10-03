@@ -1,0 +1,61 @@
+{
+    "result": [
+        {
+            "ID": "234",
+            "ENTITY_ID": "DYNAMIC_1054_STAGE_18",
+            "STATUS_ID": "DT1054_18:NEW",
+            "NAME": "App Incomplete",
+            "NAME_INIT": "Start",
+            "SORT": "10",
+            "SYSTEM": "Y",
+            "COLOR": "#22b9ff",
+            "SEMANTICS": null,
+            "CATEGORY_ID": "18"
+        },
+        {
+            "ID": "235",
+            "ENTITY_ID": "DYNAMIC_1054_STAGE_18",
+            "STATUS_ID": "DT1054_18:PREPARATION",
+            "NAME": "Under Review",
+            "NAME_INIT": "Prepare",
+            "SORT": "20",
+            "SYSTEM": "N",
+            "COLOR": "#88b9ff",
+            "SEMANTICS": null,
+            "CATEGORY_ID": "18"
+        },
+        {
+            "ID": "237",
+            "ENTITY_ID": "DYNAMIC_1054_STAGE_18",
+            "STATUS_ID": "DT1054_18:SUCCESS",
+            "NAME": "Offered",
+            "NAME_INIT": "Success",
+            "SORT": "40",
+            "SYSTEM": "Y",
+            "COLOR": "#00ff00",
+            "SEMANTICS": "S",
+            "CATEGORY_ID": "18"
+        },
+        {
+            "ID": "238",
+            "ENTITY_ID": "DYNAMIC_1054_STAGE_18",
+            "STATUS_ID": "DT1054_18:FAIL",
+            "NAME": "Rejected",
+            "NAME_INIT": "Failed",
+            "SORT": "50",
+            "SYSTEM": "Y",
+            "COLOR": "#ff0000",
+            "SEMANTICS": "F",
+            "CATEGORY_ID": "18"
+        }
+    ],
+    "total": 4,
+    "time": {
+        "start": 1759519717.747357,
+        "finish": 1759519717.833325,
+        "duration": 0.085968017578125,
+        "processing": 0.003175973892211914,
+        "date_start": "2025-10-03T19:28:37+00:00",
+        "date_finish": "2025-10-03T19:28:37+00:00"
+    }
+}

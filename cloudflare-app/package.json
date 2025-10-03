@@ -1,0 +1,36 @@
+{
+  "name": "hartzell-hr-center",
+  "version": "1.0.0",
+  "description": "Hartzell HR Center - Employee Self-Service Portal",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "deploy:production": "wrangler deploy --env production",
+    "deploy:staging": "wrangler deploy --env staging",
+    "d1:create": "wrangler d1 create hartzell_hr",
+    "d1:migrate": "wrangler d1 execute hartzell_hr --file=./workers/schema.sql",
+    "d1:migrate:local": "wrangler d1 execute hartzell_hr --local --file=./workers/schema.sql",
+    "kv:create": "wrangler kv:namespace create CACHE",
+    "kv:list": "wrangler kv:key list --binding=CACHE",
+    "secrets:set": "node scripts/set-secrets.js",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "type-check": "tsc --noEmit",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "hono": "^4.0.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.9",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "vitest": "^2.1.8",
+    "wrangler": "^3.90.0"
+  }
+}

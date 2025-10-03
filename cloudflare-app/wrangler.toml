@@ -1,0 +1,83 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "hartzell-hr-center"
+main = "workers/index.ts"
+compatibility_date = "2025-10-03"
+compatibility_flags = ["nodejs_compat"]
+
+# Account details
+account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"  # Get from: wrangler whoami
+
+# D1 Database (Sessions, Audit Logs, Cache)
+[[d1_databases]]
+binding = "DB"
+database_name = "hartzell_hr"
+database_id = "YOUR_D1_DATABASE_ID"  # Generated when you run: wrangler d1 create hartzell_hr
+preview_database_id = "YOUR_D1_PREVIEW_ID"
+
+# KV Namespace (Redis-like caching for rate limiting & employee data cache)
+[[kv_namespaces]]
+binding = "CACHE"
+id = "YOUR_KV_NAMESPACE_ID"  # Generated when you run: wrangler kv:namespace create CACHE
+preview_id = "YOUR_KV_PREVIEW_ID"
+
+# Analytics Engine (Optional - for tracking)
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+
+# R2 Storage (Optional - for document storage if needed later)
+# [[r2_buckets]]
+# binding = "DOCUMENTS"
+# bucket_name = "hartzell-documents"
+
+# Environment Variables (non-secret)
+[vars]
+BITRIX24_ENTITY_TYPE_ID = "1054"
+OPENSIGN_ENV = "sandbox"
+SESSION_MAX_AGE = "28800"  # 8 hours in seconds
+RATE_LIMIT_MAX_ATTEMPTS = "5"
+RATE_LIMIT_WINDOW = "900"  # 15 minutes in seconds
+
+# Routes - Map Workers to your domain
+[[routes]]
+pattern = "hartzell.work/api/*"
+zone_name = "hartzell.work"
+
+[[routes]]
+pattern = "hartzell.work/*"
+zone_name = "hartzell.work"
+
+# Production environment
+[env.production]
+name = "hartzell-hr-center-production"
+routes = [
+  { pattern = "hartzell.work/*", zone_name = "hartzell.work" }
+]
+
+[env.production.vars]
+OPENSIGN_ENV = "production"
+
+# Staging environment
+[env.staging]
+name = "hartzell-hr-center-staging"
+routes = [
+  { pattern = "staging.hartzell.work/*", zone_name = "hartzell.work" }
+]
+
+# Development
+[env.development]
+name = "hartzell-hr-center-dev"
+
+# Build configuration (for Next.js or other frameworks)
+[build]
+command = "npm run build"
+
+[build.upload]
+format = "service-worker"
+
+# Observability
+[observability]
+enabled = true
+
+# Limits
+[limits]
+cpu_ms = 50  # 50ms CPU time per request
