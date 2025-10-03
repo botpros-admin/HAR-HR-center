@@ -31,14 +31,14 @@ SESSION_MAX_AGE = "28800"  # 8 hours in seconds
 RATE_LIMIT_MAX_ATTEMPTS = "5"
 RATE_LIMIT_WINDOW = "900"  # 15 minutes in seconds
 
-# Routes - Map Workers to your domain
-[[routes]]
-pattern = "hartzell.work/api/*"
-zone_name = "hartzell.work"
+# Routes - Map Workers to your domain (disabled until domain is configured)
+# [[routes]]
+# pattern = "hartzell.work/api/*"
+# zone_name = "hartzell.work"
 
-[[routes]]
-pattern = "hartzell.work/*"
-zone_name = "hartzell.work"
+# [[routes]]
+# pattern = "hartzell.work/*"
+# zone_name = "hartzell.work"
 
 # Production environment
 [env.production]

@@ -27,9 +27,13 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      // Convert MM/DD/YYYY to YYYY-MM-DD for API
+      const [month, day, year] = formData.dateOfBirth.split('/');
+      const isoDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+
       const response = await api.login({
         employeeId: formData.employeeId,
-        dateOfBirth: formData.dateOfBirth,
+        dateOfBirth: isoDate,
         turnstileToken: showCaptcha ? turnstileToken || undefined : undefined,
       });
 
@@ -131,16 +135,25 @@ export default function LoginPage() {
                   </label>
                   <input
                     id="dateOfBirth"
-                    type="date"
+                    type="text"
                     required
+                    placeholder="MM/DD/YYYY"
+                    maxLength={10}
                     value={formData.dateOfBirth}
-                    onChange={(e) =>
-                      setFormData({ ...formData, dateOfBirth: e.target.value })
-                    }
+                    onChange={(e) => {
+                      let value = e.target.value.replace(/\D/g, '');
+                      if (value.length >= 2) {
+                        value = value.slice(0, 2) + '/' + value.slice(2);
+                      }
+                      if (value.length >= 5) {
+                        value = value.slice(0, 5) + '/' + value.slice(5, 9);
+                      }
+                      setFormData({ ...formData, dateOfBirth: value });
+                    }}
                     className="input-field"
                   />
                   <p className="mt-1 text-xs text-gray-500">
-                    Enter your date of birth for verification
+                    Enter as MM/DD/YYYY (e.g., 09/20/1984)
                   </p>
                 </div>
 
