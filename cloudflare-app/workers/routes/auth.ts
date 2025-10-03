@@ -345,6 +345,11 @@ auth.get('/session', async (c) => {
  * Helper: Determine if SSN verification is required
  */
 async function shouldRequireSSN(env: Env, employee: any): Promise<boolean> {
+  // Skip SSN verification if employee doesn't have an SSN on file
+  if (!employee.ufCrm6Ssn || employee.ufCrm6Ssn.trim() === '') {
+    return false;
+  }
+
   const config = await env.DB.prepare(
     `SELECT value FROM system_config WHERE key = 'require_ssn_for_sensitive'`
   ).first<{ value: string }>();
