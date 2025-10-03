@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import { LogOut, User, FileText, PenTool, Home } from 'lucide-react';
 import Link from 'next/link';
 import { getInitials } from '@/lib/utils';
+import { useEffect } from 'react';
 
 export default function DashboardLayout({
   children,
@@ -16,7 +17,14 @@ export default function DashboardLayout({
   const { data: sessionData, isLoading } = useQuery({
     queryKey: ['session'],
     queryFn: () => api.getSession(),
+    retry: false,
   });
+
+  useEffect(() => {
+    if (!isLoading && !sessionData?.valid) {
+      router.push('/login');
+    }
+  }, [sessionData, isLoading, router]);
 
   const handleLogout = async () => {
     await api.logout();
@@ -35,7 +43,6 @@ export default function DashboardLayout({
   }
 
   if (!sessionData?.valid) {
-    router.push('/login');
     return null;
   }
 
