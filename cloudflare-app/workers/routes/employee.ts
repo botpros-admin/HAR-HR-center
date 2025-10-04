@@ -80,3 +80,92 @@ employeeRoutes.get('/tasks', async (c) => {
 employeeRoutes.get('/documents', async (c) => {
   return c.json([]);
 });
+
+// Update employee profile
+employeeRoutes.put('/profile', async (c) => {
+  const env = c.env;
+
+  // Get session token from Authorization header or cookie
+  let sessionId = c.req.header('Authorization')?.replace('Bearer ', '');
+  if (!sessionId) {
+    sessionId = c.req.header('Cookie')
+      ?.split('; ')
+      .find(row => row.startsWith('session='))
+      ?.split('=')[1];
+  }
+
+  if (!sessionId) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const session = await verifySession(env, sessionId);
+  if (!session) {
+    return c.json({ error: 'Invalid session' }, 401);
+  }
+
+  // Parse request body
+  const body = await c.req.json();
+  const { field, value } = body;
+
+  if (!field) {
+    return c.json({ error: 'Field is required' }, 400);
+  }
+
+  // Map frontend field names to Bitrix field names
+  const fieldMapping: Record<string, string> = {
+    preferredName: 'ufCrm6SecondName',
+    email: 'ufCrm6Email',
+    phone: 'ufCrm6PersonalMobile',
+    position: 'ufCrm6WorkPosition',
+    department: 'ufCrm6Subsidiary',
+    address: 'ufCrm6UfLegalAddress',
+  };
+
+  const bitrixField = fieldMapping[field];
+  if (!bitrixField) {
+    return c.json({ error: 'Invalid field' }, 400);
+  }
+
+  // Prepare update data
+  const updateData: Record<string, any> = {};
+
+  // Handle special cases for multi-value fields
+  if (field === 'email' || field === 'phone') {
+    updateData[bitrixField] = [value];
+  } else {
+    updateData[bitrixField] = value;
+  }
+
+  // Update in Bitrix24
+  const bitrix = new BitrixClient(env);
+  const updatedEmployee = await bitrix.updateEmployee(session.bitrixId, updateData);
+
+  if (!updatedEmployee) {
+    return c.json({ error: 'Failed to update employee' }, 500);
+  }
+
+  // Return updated profile
+  return c.json({
+    id: updatedEmployee.id,
+    bitrixId: updatedEmployee.id,
+    badgeNumber: updatedEmployee.ufCrm6BadgeNumber || '',
+    fullName: `${updatedEmployee.ufCrm6Name || ''} ${updatedEmployee.ufCrm6LastName || ''}`.trim(),
+    preferredName: updatedEmployee.ufCrm6SecondName || null,
+    email: updatedEmployee.ufCrm6Email?.[0] || '',
+    phone: updatedEmployee.ufCrm6PersonalMobile?.[0] || updatedEmployee.ufCrm6WorkPhone || null,
+    dateOfBirth: updatedEmployee.ufCrm6PersonalBirthday || null,
+    hireDate: updatedEmployee.ufCrm6EmploymentStartDate || null,
+    department: updatedEmployee.ufCrm6Subsidiary || null,
+    position: updatedEmployee.ufCrm6WorkPosition || null,
+    manager: null,
+    employmentStatus: updatedEmployee.ufCrm6EmploymentStatus === 'Y' ? 'Active' : 'Inactive',
+    employmentType: updatedEmployee.ufCrm6EmploymentType || null,
+    workLocation: null,
+    address: {
+      street: updatedEmployee.ufCrm6UfLegalAddress || null,
+      city: null,
+      state: null,
+      zip: null,
+    },
+  });
+});

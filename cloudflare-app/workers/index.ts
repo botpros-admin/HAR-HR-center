@@ -10,6 +10,7 @@ import { authRoutes } from './routes/auth';
 import { employeeRoutes } from './routes/employee';
 import { signatureRoutes } from './routes/signatures';
 import { adminRoutes } from './routes/admin';
+import { applicationRoutes } from './routes/applications';
 import type { Env } from './types';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -20,6 +21,7 @@ app.use('/api/*', cors({
   origin: (origin) => {
     const allowedOrigins = [
       'https://hartzell.work',
+      'https://app.hartzell.work',
       'http://localhost:3000',
     ];
 
@@ -47,11 +49,30 @@ app.get('/api/health', (c) => {
   });
 });
 
+// Serve public assets from R2 (logo, images, etc.)
+app.get('/assets/*', async (c) => {
+  const path = c.req.path.replace('/assets/', '');
+  const object = await c.env.ASSETS.get(path);
+
+  if (!object) {
+    return c.notFound();
+  }
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+
+  return new Response(object.body, {
+    headers,
+  });
+});
+
 // Routes
 app.route('/api/auth', authRoutes);
 app.route('/api/employee', employeeRoutes);
 app.route('/api/signatures', signatureRoutes);
 app.route('/api/admin', adminRoutes);
+app.route('/api/applications', applicationRoutes);
 
 // 404 handler
 app.notFound((c) => {

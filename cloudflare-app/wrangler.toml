@@ -18,10 +18,15 @@ database_id = "a9a002e6-d7fb-4067-a2b2-212bf295ef28"
 binding = "CACHE"
 id = "ae6971a1e8f746d4a39687a325f5dd2b"
 
-# R2 Storage (Optional - for document storage if needed later)
-# [[r2_buckets]]
-# binding = "DOCUMENTS"
-# bucket_name = "hartzell-documents"
+# R2 Storage for static assets (logos, images, etc.)
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "hartzell-assets"
+
+# R2 Storage for applicant resumes and employee documents
+[[r2_buckets]]
+binding = "DOCUMENTS"
+bucket_name = "hartzell-hr-templates"
 
 # Environment Variables (non-secret)
 [vars]

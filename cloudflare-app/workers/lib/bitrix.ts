@@ -106,6 +106,32 @@ export class BitrixClient {
   }
 
   /**
+   * Update employee fields in Bitrix24
+   */
+  async updateEmployee(id: number, fields: Partial<BitrixEmployee>): Promise<BitrixEmployee | null> {
+    const response = await this.request('crm.item.update', {
+      entityTypeId: this.entityTypeId,
+      id: id.toString(),
+      fields: JSON.stringify(fields)
+    });
+
+    const updatedEmployee = response.result?.item as BitrixEmployee | undefined;
+
+    if (updatedEmployee) {
+      // Invalidate caches
+      await this.env.CACHE.delete(`employee:id:${id}`);
+      if (updatedEmployee.ufCrm6BadgeNumber) {
+        await this.env.CACHE.delete(`employee:badge:${updatedEmployee.ufCrm6BadgeNumber}`);
+      }
+
+      // Update D1 cache with new data
+      await this.updateEmployeeCache(updatedEmployee);
+    }
+
+    return updatedEmployee || null;
+  }
+
+  /**
    * Update employee cache in D1
    */
   private async updateEmployeeCache(employee: BitrixEmployee): Promise<void> {

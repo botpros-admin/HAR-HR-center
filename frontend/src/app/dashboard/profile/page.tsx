@@ -1,9 +1,10 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { User, Mail, Phone, MapPin, Briefcase, Calendar, Building } from 'lucide-react';
+import { User, Mail, Phone, MapPin, Briefcase, Calendar, Building, Edit2, Check, X } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
+import { useState } from 'react';
 
 export default function ProfilePage() {
   const { data: profile, isLoading } = useQuery({
@@ -53,20 +54,23 @@ export default function ProfilePage() {
             label="Full Name"
             value={profile.fullName}
           />
-          <InfoField
+          <EditableField
             icon={User}
             label="Preferred Name"
             value={profile.preferredName || 'Not specified'}
+            fieldName="preferredName"
           />
-          <InfoField
+          <EditableField
             icon={Mail}
             label="Email"
             value={profile.email}
+            fieldName="email"
           />
-          <InfoField
+          <EditableField
             icon={Phone}
             label="Phone"
             value={profile.phone || 'Not specified'}
+            fieldName="phone"
           />
           <InfoField
             icon={Calendar}
@@ -87,15 +91,17 @@ export default function ProfilePage() {
           Employment Information
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <InfoField
+          <EditableField
             icon={Briefcase}
             label="Position"
             value={profile.position || 'Not specified'}
+            fieldName="position"
           />
-          <InfoField
+          <EditableField
             icon={Building}
             label="Department"
             value={profile.department || 'Not specified'}
+            fieldName="department"
           />
           <InfoField
             icon={User}
@@ -126,34 +132,19 @@ export default function ProfilePage() {
           <h2 className="text-xl font-bold text-gray-900 mb-4">
             Address
           </h2>
-          <div className="flex items-start gap-3">
-            <MapPin className="w-5 h-5 text-hartzell-blue mt-1" />
-            <div className="text-gray-900">
-              {profile.address.street && <p>{profile.address.street}</p>}
-              {(profile.address.city || profile.address.state || profile.address.zip) && (
-                <p>
-                  {profile.address.city}, {profile.address.state} {profile.address.zip}
-                </p>
-              )}
-              {!profile.address.street && !profile.address.city && (
-                <p className="text-gray-500">Not specified</p>
-              )}
-            </div>
-          </div>
+          <EditableField
+            icon={MapPin}
+            label="Street Address"
+            value={profile.address.street || 'Not specified'}
+            fieldName="address"
+          />
         </div>
       )}
 
       {/* Update Notice */}
       <div className="card bg-blue-50 border-blue-200">
         <p className="text-sm text-blue-900">
-          <strong>Need to update your information?</strong> Please contact HR at{' '}
-          <a
-            href="mailto:hr@hartzell.work"
-            className="text-hartzell-blue hover:underline"
-          >
-            hr@hartzell.work
-          </a>{' '}
-          or reach out to your manager.
+          <strong>Editing Your Profile:</strong> Hover over any editable field and click the edit icon to update your information. Changes are saved immediately to Bitrix24.
         </p>
       </div>
     </div>
@@ -176,6 +167,104 @@ function InfoField({
         <label>{label}</label>
       </div>
       <p className="text-gray-900 font-medium">{value}</p>
+    </div>
+  );
+}
+
+function EditableField({
+  icon: Icon,
+  label,
+  value,
+  fieldName,
+  editable = true,
+}: {
+  icon: any;
+  label: string;
+  value: string;
+  fieldName: string;
+  editable?: boolean;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+  const [isSaving, setIsSaving] = useState(false);
+  const queryClient = useQueryClient();
+
+  const updateMutation = useMutation({
+    mutationFn: async (newValue: string) => {
+      return api.updateProfile(fieldName, newValue);
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(['profile'], data);
+      setIsEditing(false);
+      setIsSaving(false);
+    },
+    onError: () => {
+      setIsSaving(false);
+      alert('Failed to update field. Please try again.');
+    },
+  });
+
+  const handleSave = () => {
+    if (editValue !== value) {
+      setIsSaving(true);
+      updateMutation.mutate(editValue);
+    } else {
+      setIsEditing(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setEditValue(value);
+    setIsEditing(false);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 text-sm text-gray-600 mb-1">
+        <Icon className="w-4 h-4" />
+        <label>{label}</label>
+      </div>
+      {!isEditing ? (
+        <div className="flex items-center gap-2 group">
+          <p className="text-gray-900 font-medium flex-1">{value}</p>
+          {editable && (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-gray-100 rounded"
+              title="Edit"
+            >
+              <Edit2 className="w-4 h-4 text-hartzell-blue" />
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-hartzell-blue focus:border-transparent"
+            autoFocus
+            disabled={isSaving}
+          />
+          <button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="p-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
+            title="Save"
+          >
+            <Check className="w-4 h-4" />
+          </button>
+          <button
+            onClick={handleCancel}
+            disabled={isSaving}
+            className="p-2 bg-red-500 text-white rounded hover:bg-red-600 disabled:opacity-50"
+            title="Cancel"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

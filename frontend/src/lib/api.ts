@@ -96,6 +96,13 @@ class ApiClient {
     return this.request<EmployeeProfile>('/employee/profile');
   }
 
+  async updateProfile(field: string, value: any): Promise<EmployeeProfile> {
+    return this.request<EmployeeProfile>('/employee/profile', {
+      method: 'PUT',
+      body: JSON.stringify({ field, value }),
+    });
+  }
+
   async getDashboard(): Promise<DashboardSummary> {
     return this.request<DashboardSummary>('/employee/dashboard');
   }

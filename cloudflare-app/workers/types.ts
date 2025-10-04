@@ -9,6 +9,10 @@ export interface Env {
   // KV Namespace (Redis-like cache)
   CACHE: KVNamespace;
 
+  // R2 Buckets
+  ASSETS: R2Bucket;
+  DOCUMENTS: R2Bucket;
+
   // Analytics Engine (optional)
   ANALYTICS?: AnalyticsEngineDataset;
 
