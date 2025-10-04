@@ -1,10 +1,24 @@
 'use client';
 
+import { useState } from 'react';
 import { Briefcase, Users, Award, ArrowRight, Building2, Shield, Heart } from 'lucide-react';
+import { CaptchaGate } from '@/components/CaptchaGate';
+import { useRouter } from 'next/navigation';
 
 export default function HomePage() {
   const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hartzell-hr-center.agent-b68.workers.dev/api';
   const logoUrl = API_URL.replace('/api', '/assets/logo.png');
+  const [showCaptcha, setShowCaptcha] = useState(false);
+  const router = useRouter();
+
+  const handleApplyClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setShowCaptcha(true);
+  };
+
+  const handleCaptchaVerified = () => {
+    router.push('/apply');
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -44,13 +58,13 @@ export default function HomePage() {
             Join our team of innovators, creators, and problem-solvers shaping the future of manufacturing excellence.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a
-              href="/apply"
+            <button
+              onClick={handleApplyClick}
               className="btn btn-primary text-lg px-8 py-4 flex items-center justify-center gap-2 group"
             >
               Apply Now
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </a>
+            </button>
             <a
               href="#why-hartzell"
               className="btn btn-secondary text-lg px-8 py-4"
@@ -152,13 +166,13 @@ export default function HomePage() {
           <p className="text-lg mb-8 text-blue-100">
             Take the first step towards an exciting career at Hartzell. Our application process is quick and easy.
           </p>
-          <a
-            href="/apply"
+          <button
+            onClick={handleApplyClick}
             className="inline-flex items-center gap-2 bg-white text-hartzell-blue px-8 py-4 rounded-lg font-semibold text-lg hover:bg-gray-100 transition-colors group"
           >
             Start Your Application
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-          </a>
+          </button>
         </div>
 
         {/* Footer */}
@@ -169,6 +183,14 @@ export default function HomePage() {
           </p>
         </div>
       </div>
+
+      {/* CAPTCHA Gate Modal */}
+      {showCaptcha && (
+        <CaptchaGate
+          onVerified={handleCaptchaVerified}
+          onClose={() => setShowCaptcha(false)}
+        />
+      )}
     </div>
   );
 }

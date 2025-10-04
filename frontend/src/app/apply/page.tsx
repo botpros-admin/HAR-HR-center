@@ -2,7 +2,6 @@
 
 import { useState, useCallback } from 'react';
 import { User, Mail, Phone, MapPin, Briefcase, Upload, CheckCircle, FileText, Award, Users } from 'lucide-react';
-import { TurnstileWidget } from '@/components/TurnstileWidget';
 import { useGooglePlaces } from '@/hooks/useGooglePlaces';
 
 const POSITIONS = [
@@ -34,7 +33,7 @@ export default function ApplyPage() {
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Form data
   const [formData, setFormData] = useState({
@@ -61,8 +60,6 @@ export default function ApplyPage() {
 
     // Work Experience
     hasWorkExperience: '',
-    currentEmployer: '',
-    currentPosition: '',
     yearsExperience: '',
 
     // Education
@@ -94,13 +91,23 @@ export default function ApplyPage() {
 
     // Additional
     howDidYouHear: '',
-    additionalInfo: ''
+    additionalInfo: '',
+    emailConsentGiven: false
   });
 
   const [files, setFiles] = useState({
     resume: null as File | null,
     coverLetter: null as File | null
   });
+
+  const [workExperiences, setWorkExperiences] = useState<Array<{
+    employer: string;
+    position: string;
+    startDate: string;
+    endDate: string;
+    current: boolean;
+    description: string;
+  }>>([]);
 
   // Google Places Autocomplete for address
   const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
@@ -119,17 +126,47 @@ export default function ApplyPage() {
 
   const totalSteps = 6;
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
+  const validateEmail = (email: string): boolean => {
+    const hasAt = email.includes('@');
+    const hasDot = email.includes('.');
+    const atIndex = email.indexOf('@');
+    const dotIndex = email.lastIndexOf('.');
 
-    // Auto-format phone number
+    // Check if @ comes before . and both exist
+    return hasAt && hasDot && atIndex < dotIndex && atIndex > 0 && dotIndex < email.length - 1;
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target;
+
+    // Handle checkboxes
+    if (type === 'checkbox') {
+      const checked = (e.target as HTMLInputElement).checked;
+      setFormData(prev => ({ ...prev, [name]: checked }));
+      return;
+    }
+
+    // Validate email
+    if (name === 'email') {
+      if (value && !validateEmail(value)) {
+        setErrors(prev => ({ ...prev, email: 'Email must contain @ and a valid domain (e.g., user@example.com)' }));
+      } else {
+        setErrors(prev => {
+          const newErrors = { ...prev };
+          delete newErrors.email;
+          return newErrors;
+        });
+      }
+    }
+
+    // Auto-format phone number (123-456-7890)
     if (name === 'phone' || name === 'reference1Phone' || name === 'reference2Phone') {
       const cleaned = value.replace(/\D/g, '');
       let formatted = cleaned;
       if (cleaned.length >= 6) {
-        formatted = `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6, 10)}`;
+        formatted = `${cleaned.slice(0, 3)}-${cleaned.slice(3, 6)}-${cleaned.slice(6, 10)}`;
       } else if (cleaned.length >= 3) {
-        formatted = `(${cleaned.slice(0, 3)}) ${cleaned.slice(3)}`;
+        formatted = `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
       }
       setFormData(prev => ({ ...prev, [name]: formatted }));
       return;
@@ -151,11 +188,40 @@ export default function ApplyPage() {
     }
   };
 
+  const addWorkExperience = () => {
+    setWorkExperiences([...workExperiences, {
+      employer: '',
+      position: '',
+      startDate: '',
+      endDate: '',
+      current: false,
+      description: ''
+    }]);
+  };
+
+  const removeWorkExperience = (index: number) => {
+    setWorkExperiences(workExperiences.filter((_, i) => i !== index));
+  };
+
+  const updateWorkExperience = (index: number, field: string, value: any) => {
+    const updated = [...workExperiences];
+    updated[index] = { ...updated[index], [field]: value };
+    setWorkExperiences(updated);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Check for validation errors
+    if (Object.keys(errors).length > 0) {
+      alert('Please fix all validation errors before submitting');
+      return;
+    }
+
+    // Get CAPTCHA token from sessionStorage
+    const turnstileToken = sessionStorage.getItem('captchaToken');
     if (!turnstileToken) {
-      alert('Please complete the CAPTCHA verification');
+      alert('Session expired. Please return to the home page and verify CAPTCHA again.');
       return;
     }
 
@@ -164,7 +230,11 @@ export default function ApplyPage() {
     try {
       // Create FormData for file upload
       const submitData = new FormData();
-      submitData.append('data', JSON.stringify({ ...formData, turnstileToken }));
+      submitData.append('data', JSON.stringify({
+        ...formData,
+        workExperiences,
+        turnstileToken
+      }));
 
       if (files.resume) {
         submitData.append('resume', files.resume);
@@ -296,40 +366,58 @@ export default function ApplyPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="form-label">
-                      Email Address <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                      <input
-                        type="email"
-                        name="email"
-                        value={formData.email}
-                        onChange={handleInputChange}
-                        required
-                        className="input pl-10"
-                        placeholder="john.doe@example.com"
-                      />
-                    </div>
+                <div>
+                  <label className="form-label">
+                    Email Address <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                    <input
+                      type="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      required
+                      className={`input pl-10 ${errors.email ? 'border-red-500' : ''}`}
+                      placeholder="john.doe@example.com"
+                    />
                   </div>
-                  <div>
-                    <label className="form-label">
-                      Phone Number <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                      <input
-                        type="tel"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleInputChange}
-                        required
-                        className="input pl-10"
-                        placeholder="(555) 123-4567"
-                      />
-                    </div>
+                  {errors.email && (
+                    <p className="text-red-500 text-sm mt-1">{errors.email}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      name="emailConsentGiven"
+                      checked={formData.emailConsentGiven}
+                      onChange={handleInputChange}
+                      required
+                      className="w-4 h-4 text-hartzell-blue border-gray-300 rounded focus:ring-hartzell-blue"
+                    />
+                    <span>
+                      I consent to receive email correspondence regarding my application <span className="text-red-500">*</span>
+                    </span>
+                  </label>
+                </div>
+
+                <div>
+                  <label className="form-label">
+                    Phone Number <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleInputChange}
+                      required
+                      className="input pl-10"
+                      placeholder="123-456-7890"
+                    />
                   </div>
                 </div>
 
@@ -603,33 +691,93 @@ export default function ApplyPage() {
 
                 {formData.hasWorkExperience === 'yes' && (
                   <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="form-label">
-                          Current/Most Recent Employer
-                        </label>
-                        <input
-                          type="text"
-                          name="currentEmployer"
-                          value={formData.currentEmployer}
-                          onChange={handleInputChange}
-                          className="input"
-                          placeholder="Company Name"
-                        />
-                      </div>
-                      <div>
-                        <label className="form-label">
-                          Position/Title
-                        </label>
-                        <input
-                          type="text"
-                          name="currentPosition"
-                          value={formData.currentPosition}
-                          onChange={handleInputChange}
-                          className="input"
-                          placeholder="Job Title"
-                        />
-                      </div>
+                    <div className="space-y-4">
+                      {workExperiences.map((exp, index) => (
+                        <div key={index} className="border-2 border-gray-200 rounded-lg p-4 relative">
+                          <button
+                            type="button"
+                            onClick={() => removeWorkExperience(index)}
+                            className="absolute top-2 right-2 text-red-500 hover:text-red-700"
+                          >
+                            ✕ Remove
+                          </button>
+
+                          <h4 className="font-semibold text-gray-900 mb-3">Experience #{index + 1}</h4>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                              <label className="form-label">Employer</label>
+                              <input
+                                type="text"
+                                value={exp.employer}
+                                onChange={(e) => updateWorkExperience(index, 'employer', e.target.value)}
+                                className="input"
+                                placeholder="Company Name"
+                              />
+                            </div>
+                            <div>
+                              <label className="form-label">Position</label>
+                              <input
+                                type="text"
+                                value={exp.position}
+                                onChange={(e) => updateWorkExperience(index, 'position', e.target.value)}
+                                className="input"
+                                placeholder="Job Title"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                              <label className="form-label">Start Date</label>
+                              <input
+                                type="month"
+                                value={exp.startDate}
+                                onChange={(e) => updateWorkExperience(index, 'startDate', e.target.value)}
+                                className="input"
+                              />
+                            </div>
+                            <div>
+                              <label className="form-label">End Date</label>
+                              <input
+                                type="month"
+                                value={exp.endDate}
+                                onChange={(e) => updateWorkExperience(index, 'endDate', e.target.value)}
+                                disabled={exp.current}
+                                className="input"
+                              />
+                              <label className="flex items-center gap-2 mt-2">
+                                <input
+                                  type="checkbox"
+                                  checked={exp.current}
+                                  onChange={(e) => updateWorkExperience(index, 'current', e.target.checked)}
+                                  className="w-4 h-4"
+                                />
+                                <span className="text-sm">Currently work here</span>
+                              </label>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="form-label">Description (Optional)</label>
+                            <textarea
+                              value={exp.description}
+                              onChange={(e) => updateWorkExperience(index, 'description', e.target.value)}
+                              className="input"
+                              rows={3}
+                              placeholder="Briefly describe your responsibilities..."
+                            />
+                          </div>
+                        </div>
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={addWorkExperience}
+                        className="btn-secondary w-full"
+                      >
+                        + Add Work Experience
+                      </button>
                     </div>
 
                     <div>
@@ -801,7 +949,7 @@ export default function ApplyPage() {
                         value={formData.reference1Phone}
                         onChange={handleInputChange}
                         className="input"
-                        placeholder="(555) 123-4567"
+                        placeholder="123-456-7890"
                       />
                     </div>
                     <div>
@@ -1054,13 +1202,12 @@ export default function ApplyPage() {
 
                 <div>
                   <label className="form-label">
-                    Upload Resume <span className="text-red-500">*</span>
+                    Upload Resume (Optional)
                   </label>
                   <input
                     type="file"
                     accept=".pdf,.doc,.docx"
                     onChange={(e) => handleFileChange(e, 'resume')}
-                    required
                     className="block w-full text-sm text-gray-500
                       file:mr-4 file:py-2 file:px-4
                       file:rounded-lg file:border-0
@@ -1133,16 +1280,7 @@ export default function ApplyPage() {
                   />
                 </div>
 
-                <hr className="my-6" />
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    CAPTCHA Verification <span className="text-red-500">*</span>
-                  </label>
-                  <TurnstileWidget onVerify={setTurnstileToken} />
-                </div>
-
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-6">
                   <p className="text-sm text-gray-700">
                     <strong>Important:</strong> By submitting this application, you certify that all information provided is true and complete to the best of your knowledge. Any false or misleading information may result in disqualification from employment or termination if employed.
                   </p>
@@ -1175,7 +1313,7 @@ export default function ApplyPage() {
               ) : (
                 <button
                   type="submit"
-                  disabled={isSubmitting || !files.resume || !turnstileToken}
+                  disabled={isSubmitting}
                   className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isSubmitting ? 'Submitting...' : 'Submit Application'}
