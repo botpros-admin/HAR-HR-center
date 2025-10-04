@@ -106,6 +106,18 @@ export class BitrixClient {
   }
 
   /**
+   * Create a new item (applicant, employee, etc.)
+   */
+  async createItem(fields: Record<string, any>): Promise<any> {
+    const response = await this.request('crm.item.add', {
+      entityTypeId: this.entityTypeId,
+      fields: JSON.stringify(fields)
+    });
+
+    return response.result?.item || null;
+  }
+
+  /**
    * Update employee fields in Bitrix24
    */
   async updateEmployee(id: number, fields: Partial<BitrixEmployee>): Promise<BitrixEmployee | null> {

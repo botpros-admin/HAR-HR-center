@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
+import { BitrixClient } from '../lib/bitrix';
 
 export const applicationRoutes = new Hono<{ Bindings: Env }>();
 
@@ -65,6 +66,8 @@ applicationRoutes.post('/submit', async (c) => {
     }
 
     // Create applicant record in Bitrix24
+    const bitrix = new BitrixClient(env);
+
     const bitrixData = {
       title: `${data.firstName} ${data.lastName} - ${data.position}`,
       ufCrm6Name: data.firstName,
@@ -118,23 +121,10 @@ applicationRoutes.post('/submit', async (c) => {
       })
     };
 
-    // Create Bitrix24 item
-    const bitrixUrl = `${env.BITRIX24_WEBHOOK_URL}/crm.item.add`;
-    const bitrixResponse = await fetch(bitrixUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        entityTypeId: env.BITRIX24_ENTITY_TYPE_ID,
-        fields: JSON.stringify(bitrixData)
-      }),
-    });
+    // Create Bitrix24 item using BitrixClient
+    const bitrixResult = await bitrix.createItem(bitrixData);
 
-    const bitrixResult = await bitrixResponse.json() as any;
-
-    if (!bitrixResult.result) {
-      console.error('Bitrix24 error:', bitrixResult);
+    if (!bitrixResult) {
       throw new Error('Failed to create applicant record in Bitrix24');
     }
 
@@ -148,7 +138,7 @@ applicationRoutes.post('/submit', async (c) => {
     `)
       .bind(
         applicationId,
-        bitrixResult.result.item.id,
+        bitrixResult.id,
         data.firstName,
         data.lastName,
         data.email,
@@ -163,15 +153,15 @@ applicationRoutes.post('/submit', async (c) => {
 
     // Log to audit trail
     await env.DB.prepare(`
-      INSERT INTO audit_logs (action, status, metadata, created_at)
-      VALUES (?, ?, ?, datetime('now'))
+      INSERT INTO audit_logs (action, status, metadata)
+      VALUES (?, ?, ?)
     `)
       .bind(
         'application_submitted',
         'success',
         JSON.stringify({
           applicationId,
-          bitrixId: bitrixResult.result.item.id,
+          bitrixId: bitrixResult.id,
           applicantName: `${data.firstName} ${data.lastName}`,
           position: data.position
         })
@@ -188,16 +178,20 @@ applicationRoutes.post('/submit', async (c) => {
     console.error('Application submission error:', error);
 
     // Log error to audit trail
-    await env.DB.prepare(`
-      INSERT INTO audit_logs (action, status, metadata, created_at)
-      VALUES (?, ?, ?, datetime('now'))
-    `)
-      .bind(
-        'application_submission_failed',
-        'failure',
-        JSON.stringify({ error: error.message })
-      )
-      .run();
+    try {
+      await env.DB.prepare(`
+        INSERT INTO audit_logs (action, status, metadata)
+        VALUES (?, ?, ?)
+      `)
+        .bind(
+          'application_submission_failed',
+          'failure',
+          JSON.stringify({ error: error.message })
+        )
+        .run();
+    } catch (logError) {
+      console.error('Failed to log error:', logError);
+    }
 
     return c.json({
       success: false,
