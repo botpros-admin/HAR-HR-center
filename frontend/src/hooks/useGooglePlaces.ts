@@ -17,6 +17,12 @@ interface UseGooglePlacesProps {
 export function useGooglePlaces({ apiKey, onPlaceSelected }: UseGooglePlacesProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const callbackRef = useRef(onPlaceSelected);
+
+  // Update callback ref when it changes
+  useEffect(() => {
+    callbackRef.current = onPlaceSelected;
+  }, [onPlaceSelected]);
 
   useEffect(() => {
     // Load Google Maps script with async loading
@@ -87,7 +93,7 @@ export function useGooglePlaces({ apiKey, onPlaceSelected }: UseGooglePlacesProp
 
       const fullStreet = `${streetNumber} ${street}`.trim();
 
-      onPlaceSelected({
+      callbackRef.current({
         streetNumber,
         street: fullStreet,
         city,
@@ -102,7 +108,7 @@ export function useGooglePlaces({ apiKey, onPlaceSelected }: UseGooglePlacesProp
         google.maps.event.clearInstanceListeners(autocompleteRef.current);
       }
     };
-  }, [apiKey, onPlaceSelected]);
+  }, [apiKey]);
 
   return inputRef;
 }

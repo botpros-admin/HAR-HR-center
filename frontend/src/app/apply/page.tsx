@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { User, Mail, Phone, MapPin, Briefcase, Upload, CheckCircle, FileText, Award, Users } from 'lucide-react';
 import { TurnstileWidget } from '@/components/TurnstileWidget';
 import { useGooglePlaces } from '@/hooks/useGooglePlaces';
