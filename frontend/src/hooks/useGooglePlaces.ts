@@ -22,10 +22,15 @@ export function useGooglePlaces({ apiKey, onPlaceSelected }: UseGooglePlacesProp
     // Load Google Maps script with async loading
     if (!window.google?.maps) {
       const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&loading=async&callback=initGoogleMaps`;
       script.async = true;
       script.defer = true;
-      script.onload = initAutocomplete;
+
+      // Define global callback for when Google Maps is ready
+      (window as any).initGoogleMaps = () => {
+        initAutocomplete();
+      };
+
       document.head.appendChild(script);
     } else {
       initAutocomplete();
@@ -33,6 +38,12 @@ export function useGooglePlaces({ apiKey, onPlaceSelected }: UseGooglePlacesProp
 
     function initAutocomplete() {
       if (!inputRef.current) return;
+
+      // Wait for google.maps.places to be available
+      if (!window.google?.maps?.places) {
+        setTimeout(initAutocomplete, 100);
+        return;
+      }
 
       autocompleteRef.current = new google.maps.places.Autocomplete(inputRef.current, {
         types: ['address'],
