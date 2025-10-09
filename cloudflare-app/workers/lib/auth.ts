@@ -91,6 +91,18 @@ export async function checkRateLimit(
   };
 }
 
+export async function resetRateLimit(
+  env: Env,
+  identifier: string,
+  type: 'login' | 'ssn_verify'
+): Promise<void> {
+  await env.DB.prepare(
+    `DELETE FROM rate_limits WHERE identifier = ? AND attempt_type = ?`
+  )
+    .bind(identifier, type)
+    .run();
+}
+
 /**
  * Verify Cloudflare Turnstile (CAPTCHA)
  */
@@ -178,8 +190,8 @@ export async function verifySession(
   // Try KV first (faster)
   const cached = await env.CACHE.get(`session:${sessionId}`);
   if (cached) {
-    // Update last activity in background
-    env.DB.prepare(`
+    // Update last activity (await to prevent dropped updates under load)
+    await env.DB.prepare(`
       UPDATE sessions
       SET last_activity = datetime('now')
       WHERE id = ?

@@ -131,6 +131,61 @@ export interface BitrixEmployee {
   ufCrm_6_401K_ENROLLMENT?: number;
   ufCrm6EquipmentAssigned?: string[];
   ufCrm6HiringPaperwork?: number[];
+
+  // Employment Details
+  ufCrm6EmploymentType?: string; // Full-time, Part-time, Contract, Temporary
+  ufCrm6Shift?: string; // Day, Night, Swing, Flexible
+  ufCrm6PreferredName?: string;
+
+  // Education
+  ufCrm6EducationLevel?: string;
+  ufCrm6SchoolName?: string;
+  ufCrm6GraduationYear?: string;
+  ufCrm6FieldOfStudy?: string;
+
+  // Skills & Certifications
+  ufCrm6Skills?: string; // Comma-separated or JSON
+  ufCrm6Certifications?: string;
+  ufCrm6SoftwareExperience?: string;
+
+  // Address
+  ufCrm6Address?: string;
+
+  // Additional data stored as JSON blob
+  ufCrm6AdditionalInfo?: string; // Stores: work experiences, references, documents, legal fields, etc.
+
   // ... other Bitrix24 fields
   [key: string]: any;
+}
+
+export interface DocumentTemplate {
+  id: string;
+  title: string;
+  description?: string;
+  category: 'onboarding' | 'tax' | 'benefits' | 'policy' | 'other';
+  templateUrl: string; // R2 key/path
+  fileName: string;
+  fileSize?: number;
+  requiresSignature: boolean;
+  isActive: boolean;
+  createdBy?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DocumentAssignment {
+  id: number;
+  templateId: string;
+  employeeId: number;
+  bitrixId: number;
+  signatureRequestId?: string;
+  status: 'assigned' | 'sent' | 'signed' | 'declined' | 'expired';
+  priority: 'high' | 'medium' | 'low';
+  dueDate?: string;
+  assignedAt: string;
+  assignedBy?: number;
+  signedAt?: string;
+  signedDocumentUrl?: string;
+  bitrixFileId?: string;
+  notes?: string;
 }

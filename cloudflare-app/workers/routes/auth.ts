@@ -7,7 +7,9 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { Env, LoginRequest, SSNVerificationRequest, SessionData, AuditLogEntry } from '../types';
 import { BitrixClient } from '../lib/bitrix';
-import { checkRateLimit, verifyCaptcha, createSession, verifySession, auditLog } from '../lib/auth';
+import { checkRateLimit, verifyCaptcha, createSession, verifySession, auditLog, resetRateLimit } from '../lib/auth';
+import { maskSSN } from '../lib/pii';
+import { generateCsrfToken } from '../middleware/csrf';
 
 const auth = new Hono<{ Bindings: Env }>();
 
@@ -123,6 +125,11 @@ auth.post('/login', async (c) => {
       // Create session immediately
       const session = await createSession(env, employee, ipAddress, userAgent);
 
+      // Generate CSRF token
+      const csrfToken = await generateCsrfToken(env, session.id);
+
+      await resetRateLimit(env, employeeId, 'login');
+
       await auditLog(env, {
         employeeId: session.employeeId,
         bitrixId: session.bitrixId,
@@ -135,20 +142,24 @@ auth.post('/login', async (c) => {
 
       return c.json({
         success: true,
-        sessionToken: session.id,
         session: {
           id: session.id,
-          employee: {
-            name: session.name,
-            email: session.email,
-            role: session.role
-          }
+          employeeId: session.employeeId,
+          bitrixId: session.bitrixId,
+          badgeNumber: session.badgeNumber,
+          name: session.name,
+          email: session.email,
+          role: session.role
         },
+        csrfToken,
         requiresSSN: false
+      }, 200, {
+        'Set-Cookie': buildSessionCookie(session.id, env, c.req.header('Host'))
       });
     }
 
     // Create temporary pre-auth session (5 minutes)
+    // Note: Store only last 4 of SSN, never the full SSN
     const preAuthSession = crypto.randomUUID();
     await env.CACHE.put(
       `preauth:${preAuthSession}`,
@@ -156,7 +167,7 @@ auth.post('/login', async (c) => {
         employeeId: employee.id,
         bitrixId: employee.id,
         badgeNumber: employee.ufCrm6BadgeNumber,
-        ssnLast4: employee.ufCrm6Ssn?.slice(-4),
+        ssnLast4: employee.ufCrm6Ssn?.slice(-4), // Only last 4, never full SSN
         ipAddress,
         userAgent
       }),
@@ -248,6 +259,11 @@ auth.post('/verify-ssn', async (c) => {
     // Create full session
     const session = await createSession(env, employee, ipAddress, userAgent);
 
+    // Generate CSRF token
+    const csrfToken = await generateCsrfToken(env, session.id);
+
+    await resetRateLimit(env, preAuth.badgeNumber, 'login');
+
     // Delete pre-auth session
     await env.CACHE.delete(`preauth:${sessionId}`);
 
@@ -263,15 +279,18 @@ auth.post('/verify-ssn', async (c) => {
 
     return c.json({
       success: true,
-      sessionToken: session.id,
       session: {
         id: session.id,
-        employee: {
-          name: session.name,
-          email: session.email,
-          role: session.role
-        }
-      }
+        employeeId: session.employeeId,
+        bitrixId: session.bitrixId,
+        badgeNumber: session.badgeNumber,
+        name: session.name,
+        email: session.email,
+        role: session.role
+      },
+      csrfToken
+    }, 200, {
+      'Set-Cookie': buildSessionCookie(session.id, env, c.req.header('Host'))
     });
 
   } catch (error) {
@@ -302,6 +321,9 @@ auth.post('/logout', async (c) => {
       .bind(sessionId)
       .run();
 
+    // Delete from KV cache
+    await env.CACHE.delete(`session:${sessionId}`);
+
     await auditLog(env, {
       action: 'logout',
       status: 'success',
@@ -309,7 +331,9 @@ auth.post('/logout', async (c) => {
     });
   }
 
-  return c.json({ success: true });
+  return c.json({ success: true }, 200, {
+    'Set-Cookie': buildClearedSessionCookie(env, c.req.header('Host'))
+  });
 });
 
 /**
@@ -338,6 +362,9 @@ auth.get('/session', async (c) => {
     return c.json({ error: 'Invalid session' }, 401);
   }
 
+  // Generate/refresh CSRF token
+  const csrfToken = await generateCsrfToken(env, sessionId);
+
   return c.json({
     valid: true,
     session: {
@@ -345,7 +372,8 @@ auth.get('/session', async (c) => {
       email: session.email,
       role: session.role,
       badgeNumber: session.badgeNumber
-    }
+    },
+    csrfToken
   });
 });
 
@@ -363,6 +391,56 @@ async function shouldRequireSSN(env: Env, employee: any): Promise<boolean> {
   ).first<{ value: string }>();
 
   return config?.value === 'true';
+}
+
+function buildSessionCookie(sessionId: string, env: Env, hostHeader?: string | null): string {
+  const parts = [
+    `session=${sessionId}`,
+    'HttpOnly',
+    'Secure',
+    'Path=/',
+    `Max-Age=${env.SESSION_MAX_AGE}`,
+    'SameSite=None'
+  ];
+
+  const cookieDomain = getCookieDomain(hostHeader);
+  if (cookieDomain) {
+    parts.push(`Domain=${cookieDomain}`);
+  }
+
+  return parts.join('; ');
+}
+
+function buildClearedSessionCookie(env: Env, hostHeader?: string | null): string {
+  const parts = [
+    'session=',
+    'HttpOnly',
+    'Secure',
+    'Path=/',
+    'Max-Age=0',
+    'SameSite=None'
+  ];
+
+  const cookieDomain = getCookieDomain(hostHeader);
+  if (cookieDomain) {
+    parts.push(`Domain=${cookieDomain}`);
+  }
+
+  return parts.join('; ');
+}
+
+function getCookieDomain(hostHeader?: string | null): string | undefined {
+  if (!hostHeader) {
+    return undefined;
+  }
+
+  const host = hostHeader.toLowerCase();
+
+  if (host === 'hartzell.work' || host.endsWith('.hartzell.work')) {
+    return '.hartzell.work';
+  }
+
+  return undefined;
 }
 
 export { auth as authRoutes };

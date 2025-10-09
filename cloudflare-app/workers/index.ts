@@ -11,6 +11,7 @@ import { employeeRoutes } from './routes/employee';
 import { signatureRoutes } from './routes/signatures';
 import { adminRoutes } from './routes/admin';
 import { applicationRoutes } from './routes/applications';
+import { validateCsrf } from './middleware/csrf';
 import type { Env } from './types';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -24,6 +25,11 @@ app.use('/api/*', cors({
       'https://app.hartzell.work',
       'http://localhost:3000',
     ];
+
+    // Handle requests without Origin header (health checks, service-to-service)
+    if (!origin) {
+      return allowedOrigins[0];
+    }
 
     // Allow any Cloudflare Pages deployment
     if (origin.endsWith('.hartzell-hr-frontend.pages.dev')) {
@@ -39,6 +45,9 @@ app.use('/api/*', cors({
   },
   credentials: true,
 }));
+
+// CSRF Protection (validates POST/PUT/DELETE/PATCH requests)
+app.use('/api/*', validateCsrf);
 
 // Health check
 app.get('/api/health', (c) => {

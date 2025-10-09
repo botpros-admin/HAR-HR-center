@@ -27,6 +27,16 @@ interface TurnstileWidgetProps {
 export function TurnstileWidget({ onVerify, onError }: TurnstileWidgetProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const widgetIdRef = useRef<string | null>(null);
+  const verifyCallbackRef = useRef(onVerify);
+  const errorCallbackRef = useRef(onError);
+
+  useEffect(() => {
+    verifyCallbackRef.current = onVerify;
+  }, [onVerify]);
+
+  useEffect(() => {
+    errorCallbackRef.current = onError;
+  }, [onError]);
 
   useEffect(() => {
     const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY;
@@ -39,15 +49,15 @@ export function TurnstileWidget({ onVerify, onError }: TurnstileWidgetProps) {
     const renderTurnstile = () => {
       if (!containerRef.current || !window.turnstile) return;
 
-      // Clear any existing widget
       if (widgetIdRef.current) {
         window.turnstile.reset(widgetIdRef.current);
+        return;
       }
 
       widgetIdRef.current = window.turnstile.render(containerRef.current, {
         sitekey: siteKey,
-        callback: onVerify,
-        'error-callback': onError,
+        callback: (token) => verifyCallbackRef.current(token),
+        'error-callback': () => errorCallbackRef.current?.(),
         theme: 'light',
       });
     };
@@ -65,7 +75,7 @@ export function TurnstileWidget({ onVerify, onError }: TurnstileWidgetProps) {
 
       return () => clearInterval(interval);
     }
-  }, [onVerify, onError]);
+  }, []);
 
   return <div ref={containerRef} className="flex justify-center" />;
 }

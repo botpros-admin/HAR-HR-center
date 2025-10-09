@@ -6,7 +6,7 @@ import { Providers } from './providers';
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-  title: 'Hartzell HR Center',
+  title: 'Hartzell Employee Portal',
   description: 'Employee self-service portal for Hartzell Companies',
 };
 

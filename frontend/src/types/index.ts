@@ -27,8 +27,7 @@ export interface LoginResponse {
   requiresCaptcha?: boolean;
   failedAttempts?: number;
   preAuthSession?: string;
-  sessionToken?: string;
-  session?: SessionData & { sessionId: string };
+  session?: SessionData & { id: string };
   error?: string;
 }
 
@@ -39,8 +38,7 @@ export interface VerifySSNRequest {
 
 export interface VerifySSNResponse {
   success: boolean;
-  sessionToken?: string;
-  session: SessionData & { sessionId: string };
+  session: SessionData & { id: string };
   error?: string;
 }
 
@@ -50,6 +48,9 @@ export interface EmployeeProfile {
   bitrixId: number;
   badgeNumber: string;
   fullName: string;
+  firstName?: string;
+  middleName?: string;
+  lastName?: string;
   preferredName?: string;
   email: string;
   phone?: string;
@@ -60,6 +61,7 @@ export interface EmployeeProfile {
   manager?: string;
   employmentStatus: string;
   employmentType?: string;
+  shift?: string;
   workLocation?: string;
   address?: {
     street?: string;
@@ -67,20 +69,84 @@ export interface EmployeeProfile {
     state?: string;
     zip?: string;
   };
+
+  // Education
+  education?: {
+    level: string | null;
+    school: string | null;
+    graduationYear: string | null;
+    fieldOfStudy: string | null;
+  };
+
+  // Skills & Certifications
+  skills?: string | null;
+  certifications?: string | null;
+  softwareExperience?: string | null;
+
+  // Work Experience
+  workExperiences?: Array<{
+    employer: string;
+    position: string;
+    startDate: string;
+    endDate?: string;
+    currentlyWorking?: boolean;
+    description?: string;
+  }>;
+  yearsExperience?: string | null;
+
+  // References
+  references?: Array<{
+    name: string;
+    phone: string;
+    relationship: string;
+  }>;
+
+  // Documents
+  documents?: {
+    resumeUrl: string | null;
+    coverLetterUrl: string | null;
+    applicationId: string | null;
+    submittedAt: string | null;
+  };
+
+  // Additional application data
+  desiredSalary?: string | null;
+  availableStartDate?: string | null;
+  willingToRelocate?: boolean | null;
+  authorizedToWork?: boolean | null;
+  requiresSponsorship?: boolean | null;
+  howDidYouHear?: string | null;
 }
 
 // Documents
 export interface Document {
-  id: string;
+  id: number;
+  templateId: string;
   title: string;
-  type: 'pdf' | 'image' | 'word' | 'other';
-  category: 'personal' | 'benefits' | 'payroll' | 'policy' | 'signature_required';
-  uploadedAt: string;
+  description?: string;
+  type?: 'pdf' | 'image' | 'word' | 'other';
+  category: 'onboarding' | 'tax' | 'benefits' | 'policy' | 'other';
+  status: 'assigned' | 'sent' | 'signed' | 'expired' | 'declined';
+  priority: 'high' | 'medium' | 'low';
+  requiresSignature: boolean;
+  signatureStatus?: 'pending' | 'signed' | 'expired' | 'declined';
+  signatureUrl?: string | null;
+  signatureRequestId?: string | null;
+  templateUrl: string;
+  fileName: string;
+  fieldPositions?: string | null;
+  signedDocumentUrl?: string | null;
+  dueDate?: string | null;
+  assignedAt: string;
+  signedAt?: string | null;
+  uploadedAt?: string; // For backwards compatibility
   uploadedBy?: string;
   url?: string;
-  requiresSignature: boolean;
-  signatureStatus?: 'pending' | 'signed' | 'expired';
-  signatureRequestId?: string;
+  // Computed fields
+  needsAttention: boolean;
+  isUrgent: boolean;
+  isComplete: boolean;
+  isExpired: boolean;
 }
 
 // Signature Requests

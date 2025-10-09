@@ -17,13 +17,15 @@ export default function DashboardPage() {
     queryFn: () => api.getTasks(),
   });
 
-  const { data: signatures } = useQuery({
-    queryKey: ['signatures'],
-    queryFn: () => api.getPendingSignatures(),
+  const { data: documents } = useQuery({
+    queryKey: ['documents'],
+    queryFn: () => api.getDocuments(),
   });
 
   const pendingTasks = tasks?.filter((t) => !t.completedAt) || [];
   const urgentTasks = pendingTasks.filter((t) => t.priority === 'high');
+  const needsAttentionDocs = documents?.filter((d) => d.needsAttention) || [];
+  const urgentDocs = documents?.filter((d) => d.isUrgent) || [];
 
   return (
     <div className="space-y-6">
@@ -66,26 +68,19 @@ export default function DashboardPage() {
       )}
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard
-          title="Pending Signatures"
-          value={summary?.pendingSignatures || 0}
-          icon={PenTool}
+          title="Needs Attention"
+          value={needsAttentionDocs.length}
+          icon={FileText}
           color="blue"
-          href="/dashboard/signatures"
+          href="/dashboard/documents"
         />
         <StatCard
           title="Action Items"
           value={summary?.pendingTasks || 0}
           icon={Clock}
           color="yellow"
-        />
-        <StatCard
-          title="Documents"
-          value={summary?.recentDocuments || 0}
-          icon={FileText}
-          color="green"
-          href="/dashboard/documents"
         />
         <StatCard
           title="Profile Complete"
@@ -96,45 +91,52 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Pending Signatures */}
-      {signatures && signatures.length > 0 && (
+      {/* Documents Needing Attention */}
+      {needsAttentionDocs.length > 0 && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-              <PenTool className="w-5 h-5 text-hartzell-blue" />
-              Documents Awaiting Signature
+              <FileText className="w-5 h-5 text-hartzell-blue" />
+              Documents Needing Attention
             </h2>
             <Link
-              href="/dashboard/signatures"
+              href="/dashboard/documents"
               className="text-sm text-hartzell-blue hover:underline"
             >
               View All
             </Link>
           </div>
           <div className="space-y-3">
-            {signatures.slice(0, 5).map((sig) => (
+            {needsAttentionDocs.slice(0, 5).map((doc) => (
               <div
-                key={sig.id}
+                key={doc.id}
                 className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
               >
                 <div className="flex-1">
                   <h3 className="font-medium text-gray-900">
-                    {sig.documentName}
+                    {doc.title}
                   </h3>
                   <div className="flex items-center gap-4 mt-1">
-                    <span className={`badge ${getPriorityColor(sig.priority)}`}>
-                      {sig.priority.toUpperCase()}
-                    </span>
+                    {doc.status === 'sent' && (
+                      <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs font-medium rounded-full">
+                        Signature Required
+                      </span>
+                    )}
+                    {doc.priority === 'high' && (
+                      <span className="px-2 py-1 bg-red-100 text-red-800 text-xs font-medium rounded-full">
+                        URGENT
+                      </span>
+                    )}
                     <span className="text-xs text-gray-500">
-                      Requested {formatRelativeTime(sig.requestedAt)}
+                      Assigned {formatRelativeTime(doc.assignedAt)}
                     </span>
                   </div>
                 </div>
                 <Link
-                  href={`/dashboard/signatures/${sig.id}`}
+                  href="/dashboard/documents"
                   className="btn-primary"
                 >
-                  Sign Now
+                  {doc.status === 'sent' ? 'Sign Now' : 'View'}
                 </Link>
               </div>
             ))}
@@ -187,7 +189,7 @@ export default function DashboardPage() {
 
       {/* All Clear Message */}
       {!urgentTasks.length &&
-        !signatures?.length &&
+        !needsAttentionDocs.length &&
         !pendingTasks.length && (
           <div className="card text-center py-12">
             <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
@@ -195,7 +197,7 @@ export default function DashboardPage() {
               All Caught Up!
             </h2>
             <p className="text-gray-600">
-              You have no pending tasks or signatures at this time.
+              You have no pending tasks or documents at this time.
             </p>
           </div>
         )}

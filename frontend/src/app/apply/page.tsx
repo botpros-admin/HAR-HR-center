@@ -1,8 +1,11 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { User, Mail, Phone, MapPin, Briefcase, Upload, CheckCircle, FileText, Award, Users } from 'lucide-react';
 import { useGooglePlaces } from '@/hooks/useGooglePlaces';
+import { CaptchaGate } from '@/components/CaptchaGate';
+import { Toast, ToastContainer } from '@/components/Toast';
 
 const POSITIONS = [
   'Manufacturing Technician',
@@ -30,10 +33,42 @@ const EDUCATION_LEVELS = [
 ];
 
 export default function ApplyPage() {
+  const router = useRouter();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [showCaptchaGate, setShowCaptchaGate] = useState(false);
+  const [isProgressSticky, setIsProgressSticky] = useState(false);
+  const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: 'success' | 'error' | 'warning' | 'info' }>>([]);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+  };
+
+  const removeToast = (id: number) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  // Check for CAPTCHA token on mount
+  useEffect(() => {
+    const turnstileToken = sessionStorage.getItem('captchaToken');
+    if (!turnstileToken) {
+      // Show CAPTCHA gate instead of redirecting
+      setShowCaptchaGate(true);
+    }
+  }, []);
+
+  // Handle scroll for sticky progress bar
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsProgressSticky(window.scrollY > 180);
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
 
   // Form data
   const [formData, setFormData] = useState({
@@ -209,19 +244,25 @@ export default function ApplyPage() {
     setWorkExperiences(updated);
   };
 
+  const handleCaptchaVerified = () => {
+    // Close the CAPTCHA gate and allow user to fill out the form
+    setShowCaptchaGate(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Check for validation errors
     if (Object.keys(errors).length > 0) {
-      alert('Please fix all validation errors before submitting');
+      showToast('Please fix all validation errors before submitting', 'warning');
       return;
     }
 
     // Get CAPTCHA token from sessionStorage
     const turnstileToken = sessionStorage.getItem('captchaToken');
     if (!turnstileToken) {
-      alert('Session expired. Please return to the home page and verify CAPTCHA again.');
+      showToast('Session expired. Please verify CAPTCHA again.', 'warning');
+      setShowCaptchaGate(true);
       return;
     }
 
@@ -255,7 +296,7 @@ export default function ApplyPage() {
       setSubmitted(true);
     } catch (error) {
       console.error('Submission error:', error);
-      alert('Failed to submit application. Please try again.');
+      showToast('Failed to submit application. Please try again.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -287,6 +328,18 @@ export default function ApplyPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-100 via-indigo-50 to-purple-100 py-8 px-4">
+      {/* Toast Container */}
+      <ToastContainer>
+        {toasts.map(toast => (
+          <Toast
+            key={toast.id}
+            message={toast.message}
+            type={toast.type}
+            onClose={() => removeToast(toast.id)}
+          />
+        ))}
+      </ToastContainer>
+
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8 bg-white rounded-2xl shadow-lg p-8 border border-gray-200">
@@ -296,19 +349,37 @@ export default function ApplyPage() {
           <p className="text-lg text-gray-600">Complete your application below</p>
         </div>
 
-        {/* Progress Bar */}
-        <div className="mb-8 bg-white rounded-xl shadow-md p-6 border border-gray-200">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-bold text-gray-900">Step {step} of {totalSteps}</span>
-            <span className="text-sm font-semibold text-hartzell-blue">{Math.round((step / totalSteps) * 100)}% Complete</span>
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-3 shadow-inner">
-            <div
-              className="bg-gradient-to-r from-hartzell-blue to-blue-600 h-3 rounded-full transition-all duration-300 shadow-md"
-              style={{ width: `${(step / totalSteps) * 100}%` }}
-            />
+        {/* Progress Bar - Sticky */}
+        <div
+          className={`transition-all duration-500 ease-in-out ${
+            isProgressSticky
+              ? 'fixed top-0 left-0 right-0 z-40 bg-white shadow-lg py-3 px-4'
+              : 'mb-8 bg-white rounded-xl shadow-md p-6 border border-gray-200'
+          }`}
+        >
+          <div className={`max-w-4xl mx-auto transition-all duration-500`}>
+            <div className={`flex items-center justify-between transition-all duration-500 ${isProgressSticky ? 'mb-2' : 'mb-3'}`}>
+              <span className={`${isProgressSticky ? 'text-xs' : 'text-sm'} font-bold text-gray-900 transition-all duration-500`}>
+                Step {step} of {totalSteps}
+              </span>
+              <span className={`${isProgressSticky ? 'text-xs' : 'text-sm'} font-semibold text-hartzell-blue transition-all duration-500`}>
+                {Math.round((step / totalSteps) * 100)}% Complete
+              </span>
+            </div>
+            <div className={`w-full bg-gray-200 rounded-full ${isProgressSticky ? 'h-2' : 'h-3'} shadow-inner transition-all duration-500 overflow-hidden`}>
+              <div
+                className="bg-gradient-to-r from-hartzell-blue via-blue-500 to-blue-600 rounded-full transition-all duration-700 ease-out shadow-md relative"
+                style={{ width: `${(step / totalSteps) * 100}%`, height: '100%' }}
+              >
+                {/* Animated shine effect */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+              </div>
+            </div>
           </div>
         </div>
+
+        {/* Spacer to prevent layout shift when progress bar becomes sticky */}
+        {isProgressSticky && <div className="mb-8" style={{ height: '88px' }}></div>}
 
         <form onSubmit={handleSubmit}>
           <div className="form-section">
@@ -416,7 +487,7 @@ export default function ApplyPage() {
                       onChange={handleInputChange}
                       required
                       className="input pl-10"
-                      placeholder="123-456-7890"
+                      placeholder="954-123-4567"
                     />
                   </div>
                 </div>
@@ -467,7 +538,7 @@ export default function ApplyPage() {
                       onChange={handleInputChange}
                       required
                       className="input"
-                      placeholder="New York"
+                      placeholder="Pompano Beach"
                     />
                   </div>
                   <div>
@@ -481,7 +552,7 @@ export default function ApplyPage() {
                       onChange={handleInputChange}
                       required
                       className="input"
-                      placeholder="NY"
+                      placeholder="FL"
                       maxLength={2}
                     />
                   </div>
@@ -496,7 +567,7 @@ export default function ApplyPage() {
                       onChange={handleInputChange}
                       required
                       className="input"
-                      placeholder="10001"
+                      placeholder="33060"
                     />
                   </div>
                 </div>
@@ -1323,6 +1394,14 @@ export default function ApplyPage() {
           </div>
         </form>
       </div>
+
+      {/* CAPTCHA Gate Modal */}
+      {showCaptchaGate && (
+        <CaptchaGate
+          onVerified={handleCaptchaVerified}
+          onClose={() => router.push('/')}
+        />
+      )}
     </div>
   );
 }

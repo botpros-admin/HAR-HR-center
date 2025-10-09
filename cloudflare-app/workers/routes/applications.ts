@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { BitrixClient } from '../lib/bitrix';
+import { sanitizeForLogging, redactApplicationData } from '../lib/pii';
 
 export const applicationRoutes = new Hono<{ Bindings: Env }>();
 
@@ -32,10 +33,25 @@ applicationRoutes.post('/submit', async (c) => {
       }),
     });
 
+    if (!turnstileResponse.ok) {
+      console.error('Turnstile API error:', {
+        status: turnstileResponse.status,
+        statusText: turnstileResponse.statusText
+      });
+      return c.json({
+        error: 'CAPTCHA verification service unavailable',
+        details: `Turnstile returned ${turnstileResponse.status}`
+      }, 500);
+    }
+
     const turnstileResult = await turnstileResponse.json() as any;
 
     if (!turnstileResult.success) {
-      return c.json({ error: 'CAPTCHA verification failed' }, 400);
+      console.error('Turnstile verification failed:', turnstileResult);
+      return c.json({
+        error: 'CAPTCHA verification failed',
+        details: turnstileResult['error-codes']
+      }, 400);
     }
 
     // Generate unique application ID
@@ -122,11 +138,23 @@ applicationRoutes.post('/submit', async (c) => {
     };
 
     // Create Bitrix24 item using BitrixClient
-    const bitrixResult = await bitrix.createItem(bitrixData);
+    let bitrixResult;
+    try {
+      bitrixResult = await bitrix.createItem(bitrixData);
 
-    if (!bitrixResult) {
-      throw new Error('Failed to create applicant record in Bitrix24');
+      if (!bitrixResult) {
+        throw new Error('Bitrix returned empty result');
+      }
+    } catch (bitrixError: any) {
+      console.error('Bitrix24 API call failed:', {
+        error: bitrixError.message,
+        stack: bitrixError.stack
+      });
+      throw new Error(`Bitrix24 integration error: ${bitrixError.message}`);
     }
+
+    // Redact sensitive PII before storing in D1
+    const redactedData = redactApplicationData(data);
 
     // Store application in D1 for quick access
     await env.DB.prepare(`
@@ -147,7 +175,7 @@ applicationRoutes.post('/submit', async (c) => {
         'submitted',
         resumeUrl,
         coverLetterUrl,
-        JSON.stringify(data)
+        JSON.stringify(redactedData) // Store redacted data only
       )
       .run();
 
@@ -175,9 +203,14 @@ applicationRoutes.post('/submit', async (c) => {
     });
 
   } catch (error: any) {
-    console.error('Application submission error:', error);
+    // Sanitize error before logging (avoid PII leakage)
+    console.error('Application submission error:', {
+      message: error.message || error,
+      stack: error.stack,
+      name: error.name
+    });
 
-    // Log error to audit trail
+    // Log error to audit trail (sanitized)
     try {
       await env.DB.prepare(`
         INSERT INTO audit_logs (action, status, metadata)
@@ -186,16 +219,21 @@ applicationRoutes.post('/submit', async (c) => {
         .bind(
           'application_submission_failed',
           'failure',
-          JSON.stringify({ error: error.message })
+          JSON.stringify({
+            error: error.message || 'Unknown error',
+            errorType: error.name
+          })
         )
         .run();
     } catch (logError) {
-      console.error('Failed to log error:', logError);
+      console.error('Failed to log error:', (logError as Error).message);
     }
 
+    // Return detailed error for debugging (will be generic in production)
     return c.json({
       success: false,
-      error: 'Failed to submit application. Please try again.'
+      error: 'Failed to submit application. Please try again.',
+      details: error.message // Helps identify Bitrix vs Turnstile failures
     }, 500);
   }
 });

@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { TurnstileWidget } from '@/components/TurnstileWidget';
-import { AlertCircle, LogIn } from 'lucide-react';
+import { AlertCircle, LogIn, Shield, User as UserIcon } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,11 +20,23 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [failedAttempts, setFailedAttempts] = useState(0);
+  const [showPortalSelection, setShowPortalSelection] = useState(false);
+
+  const handleCaptchaVerified = useCallback((token: string) => {
+    setTurnstileToken(token);
+    setError(null);
+  }, []);
 
   const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
+
+    if (showCaptcha && !turnstileToken) {
+      setLoading(false);
+      setError('Please complete the CAPTCHA verification');
+      return;
+    }
 
     try {
       // Convert MM/DD/YYYY to YYYY-MM-DD for API
@@ -40,6 +52,7 @@ export default function LoginPage() {
       if (response.requiresCaptcha && !showCaptcha) {
         setShowCaptcha(true);
         setFailedAttempts(response.failedAttempts || 0);
+        setTurnstileToken(null);
         setError('Please complete the CAPTCHA verification');
         setLoading(false);
         return;
@@ -49,22 +62,26 @@ export default function LoginPage() {
         setPreAuthSession(response.preAuthSession!);
         setStep('ssn');
       } else if (response.session) {
-        // Store session token in localStorage
-        if (response.sessionToken) {
-          localStorage.setItem('sessionToken', response.sessionToken);
+        // Session cookie is set by the server via HttpOnly cookie
+        // Show portal selection for admin users
+        if (response.session.role === 'hr_admin') {
+          setShowPortalSelection(true);
+        } else {
+          router.push('/dashboard');
         }
-        router.push('/dashboard');
       }
     } catch (err: any) {
       // Check if error contains requiresCaptcha flag
       if (err?.response?.requiresCaptcha) {
         setShowCaptcha(true);
+        setTurnstileToken(null);
         setError('Please complete the CAPTCHA verification');
       } else {
         setError(err instanceof Error ? err.message : 'Login failed');
         setFailedAttempts((prev) => prev + 1);
         if (failedAttempts >= 2) {
           setShowCaptcha(true);
+          setTurnstileToken(null);
         }
       }
     } finally {
@@ -84,11 +101,13 @@ export default function LoginPage() {
       });
 
       if (response.success) {
-        // Store session token in localStorage
-        if (response.sessionToken) {
-          localStorage.setItem('sessionToken', response.sessionToken);
+        // Session cookie is set by the server via HttpOnly cookie
+        // Show portal selection for admin users
+        if (response.session?.role === 'hr_admin') {
+          setShowPortalSelection(true);
+        } else {
+          router.push('/dashboard');
         }
-        router.push('/dashboard');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Verification failed');
@@ -99,11 +118,68 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-hartzell-navy to-hartzell-blue p-4">
+      {/* Portal Selection Modal */}
+      {showPortalSelection && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-8">
+            <div className="text-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">
+                Welcome Back!
+              </h2>
+              <p className="text-gray-600">
+                You have admin access. Which portal would you like to visit?
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              {/* Admin Portal Button */}
+              <button
+                onClick={() => router.push('/admin')}
+                className="w-full flex items-center gap-4 p-4 border-2 border-hartzell-blue bg-hartzell-blue text-white rounded-lg hover:bg-hartzell-navy hover:border-hartzell-navy transition-colors"
+              >
+                <div className="w-12 h-12 bg-white bg-opacity-20 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Shield className="w-6 h-6" />
+                </div>
+                <div className="text-left flex-1">
+                  <div className="font-semibold text-lg">Admin Portal</div>
+                  <div className="text-sm text-blue-100">
+                    Manage employees, documents & assignments
+                  </div>
+                </div>
+              </button>
+
+              {/* Employee Portal Button */}
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="w-full flex items-center gap-4 p-4 border-2 border-gray-300 bg-white text-gray-900 rounded-lg hover:border-hartzell-blue hover:bg-gray-50 transition-colors"
+              >
+                <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <UserIcon className="w-6 h-6 text-hartzell-blue" />
+                </div>
+                <div className="text-left flex-1">
+                  <div className="font-semibold text-lg">Employee Portal</div>
+                  <div className="text-sm text-gray-600">
+                    View your documents, tasks & profile
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="w-full max-w-md">
         {/* Logo/Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-white mb-2">
-            Hartzell HR Center
+          <div className="flex justify-center mb-4">
+            <img
+              src="https://hartzellpainting.com/wp-content/uploads/2025/05/Heartzell-Logo.png"
+              alt="Hartzell Logo"
+              className="h-20 w-auto"
+            />
+          </div>
+          <h1 className="text-2xl font-bold text-white mb-2">
+            Employee Portal
           </h1>
           <p className="text-blue-100">Employee Self-Service Portal</p>
         </div>
@@ -174,9 +250,7 @@ export default function LoginPage() {
                 {/* CAPTCHA */}
                 {showCaptcha && (
                   <div>
-                    <TurnstileWidget
-                      onVerify={(token) => setTurnstileToken(token)}
-                    />
+                    <TurnstileWidget onVerify={handleCaptchaVerified} />
                   </div>
                 )}
 

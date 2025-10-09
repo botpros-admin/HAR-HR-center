@@ -15,9 +15,20 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://hartzell.work/api';
 
 class ApiClient {
   private baseUrl: string;
+  private csrfToken: string | null = null;
 
   constructor(baseUrl: string = API_URL) {
     this.baseUrl = baseUrl;
+  }
+
+  // Set CSRF token (called after login)
+  setCsrfToken(token: string) {
+    this.csrfToken = token;
+  }
+
+  // Get CSRF token
+  getCsrfToken(): string | null {
+    return this.csrfToken;
   }
 
   private async request<T>(
@@ -26,28 +37,30 @@ class ApiClient {
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`;
 
-    // Get session token from localStorage
-    const sessionToken = typeof window !== 'undefined' ? localStorage.getItem('sessionToken') : null;
-
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options.headers as Record<string, string>),
     };
 
-    // Add Authorization header if session token exists
-    if (sessionToken) {
-      headers['Authorization'] = `Bearer ${sessionToken}`;
+    // Add CSRF token for state-changing requests
+    if (this.csrfToken && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method || 'GET')) {
+      headers['X-CSRF-Token'] = this.csrfToken;
     }
 
     const response = await fetch(url, {
       ...options,
       headers,
-      credentials: 'include', // Still include for backwards compatibility
+      credentials: 'include', // Send cookies with requests (HttpOnly session cookie)
     });
 
     const data = await response.json().catch(() => ({
       error: 'Request failed',
     }));
+
+    // Update CSRF token if provided in response
+    if (data.csrfToken) {
+      this.setCsrfToken(data.csrfToken);
+    }
 
     if (!response.ok) {
       // Throw an error with the full response data
@@ -93,7 +106,8 @@ class ApiClient {
 
   // Employee
   async getProfile(): Promise<EmployeeProfile> {
-    return this.request<EmployeeProfile>('/employee/profile');
+    // Add timestamp to force cache busting
+    return this.request<EmployeeProfile>(`/employee/profile?_t=${Date.now()}`);
   }
 
   async updateProfile(field: string, value: any): Promise<EmployeeProfile> {
@@ -122,6 +136,102 @@ class ApiClient {
 
   async getSignatureUrl(requestId: string): Promise<{ url: string }> {
     return this.request<{ url: string }>(`/signatures/${requestId}/url`);
+  }
+
+  async createSignatureRequest(data: {
+    documentType: string;
+    documentTitle: string;
+  }): Promise<{ signatureUrl: string; requestId: string }> {
+    return this.request<{ signatureUrl: string; requestId: string }>(
+      '/signatures/create',
+      {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }
+    );
+  }
+
+  // Admin - Employees
+  async getEmployees(): Promise<{ employees: any[] }> {
+    return this.request<{ employees: any[] }>('/admin/employees');
+  }
+
+  async refreshEmployees(): Promise<{ success: boolean; count: number; message: string }> {
+    return this.request<{ success: boolean; count: number; message: string }>('/admin/employees/refresh', {
+      method: 'POST',
+    });
+  }
+
+  // Admin - Templates
+  async getTemplates(params?: { category?: string; active_only?: boolean }): Promise<{ templates: any[] }> {
+    const searchParams = new URLSearchParams();
+    if (params?.category) searchParams.set('category', params.category);
+    if (params?.active_only) searchParams.set('active_only', 'true');
+    const query = searchParams.toString();
+    return this.request<{ templates: any[] }>(`/admin/templates${query ? '?' + query : ''}`);
+  }
+
+  async uploadTemplate(formData: FormData): Promise<{ success: boolean; template: any }> {
+    // For file uploads, don't set Content-Type header (browser will set it with boundary)
+    const url = `${this.baseUrl}/admin/templates`;
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+    });
+
+    const data = await response.json().catch(() => ({
+      error: 'Upload failed',
+    }));
+
+    if (!response.ok) {
+      const error: any = new Error(data.error || `HTTP ${response.status}`);
+      error.response = data;
+      throw error;
+    }
+
+    return data;
+  }
+
+  async deleteTemplate(templateId: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/templates/${templateId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async updateTemplateFields(templateId: string, fieldPositions: any[]): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/templates/${templateId}/fields`, {
+      method: 'PUT',
+      body: JSON.stringify({ fieldPositions }),
+    });
+  }
+
+  // Admin - Assignments
+  async getAssignments(params?: { status?: string; employee_id?: string }): Promise<{ assignments: any[] }> {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.employee_id) searchParams.set('employee_id', params.employee_id);
+    const query = searchParams.toString();
+    return this.request<{ assignments: any[] }>(`/admin/assignments${query ? '?' + query : ''}`);
+  }
+
+  async createAssignment(data: {
+    templateId: string;
+    employeeIds: number[];
+    priority?: string;
+    dueDate?: string;
+    notes?: string;
+  }): Promise<{ success: boolean; message: string; assignments: any[] }> {
+    return this.request<{ success: boolean; message: string; assignments: any[] }>('/admin/assignments', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteAssignment(assignmentId: number): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/assignments/${assignmentId}`, {
+      method: 'DELETE',
+    });
   }
 }
 
