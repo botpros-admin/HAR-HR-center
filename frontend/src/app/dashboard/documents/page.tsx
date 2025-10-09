@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { FileText, Download, Eye, PenTool, Search, CheckCircle, AlertTriangle, Clock, XCircle } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { Toast, ToastContainer } from '@/components/Toast';
-import { SignatureModal } from '@/components/SignatureModal';
+import { NativeSignatureModal } from '@/components/NativeSignatureModal';
 import { DocumentViewerModal } from '@/components/DocumentViewerModal';
 
 type FilterType = 'all' | 'needs-attention' | 'onboarding' | 'tax' | 'benefits' | 'policy' | 'other';
@@ -173,12 +173,12 @@ export default function DocumentsPage() {
         ))}
       </ToastContainer>
 
-      {/* Signature Modal */}
+      {/* Signature Modal - Native pdf-lib (white-label) */}
       {signatureModal && (
-        <SignatureModal
+        <NativeSignatureModal
           isOpen={signatureModal.isOpen}
           onClose={closeSignatureModal}
-          signatureUrl={signatureModal.signatureUrl}
+          pdfUrl="" // PDF fetched from backend based on assignmentId
           documentTitle={signatureModal.documentTitle}
           assignmentId={signatureModal.assignmentId}
           onSuccess={handleSignatureSuccess}
