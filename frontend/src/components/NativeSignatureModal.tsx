@@ -1051,18 +1051,6 @@ export function NativeSignatureModal({
                       </div>
                     </>
                   )}
-
-                  {tempSignature && (
-                    <div className="mt-4 border-2 border-green-200 rounded-xl p-3 bg-green-50 flex-shrink-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <CheckCircle className="w-4 h-4 text-green-600" />
-                        <p className="text-xs font-medium text-green-800">Signature Ready</p>
-                      </div>
-                      <div className="bg-white border border-green-300 rounded-lg p-2">
-                        <img src={tempSignature} alt="Preview" className="max-w-full h-auto mx-auto" style={{ maxHeight: '80px' }} />
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
 
