@@ -20,6 +20,7 @@ export default function DocumentsPage() {
     signatureUrl: string;
     documentTitle: string;
     assignmentId: number;
+    fieldPositions?: any[];
   } | null>(null);
   const [viewerModal, setViewerModal] = useState<{
     isOpen: boolean;
@@ -99,17 +100,17 @@ export default function DocumentsPage() {
     }
   };
 
-  const handleSign = (signatureUrl: string | null, documentTitle: string, assignmentId: number) => {
-    if (signatureUrl) {
-      setSignatureModal({
-        isOpen: true,
-        signatureUrl,
-        documentTitle,
-        assignmentId,
-      });
-    } else {
-      showToast('Signature URL not available. Please contact HR.', 'error');
-    }
+  const handleSign = (signatureUrl: string | null, documentTitle: string, assignmentId: number, fieldPositions?: any[]) => {
+    // Construct PDF URL for preview
+    const pdfUrl = `${process.env.NEXT_PUBLIC_API_URL}/employee/documents/download/${assignmentId}`;
+
+    setSignatureModal({
+      isOpen: true,
+      signatureUrl: pdfUrl, // Use download endpoint for PDF preview
+      documentTitle,
+      assignmentId,
+      fieldPositions,
+    });
   };
 
   const closeSignatureModal = () => {
@@ -178,9 +179,10 @@ export default function DocumentsPage() {
         <NativeSignatureModal
           isOpen={signatureModal.isOpen}
           onClose={closeSignatureModal}
-          pdfUrl="" // PDF fetched from backend based on assignmentId
+          pdfUrl={signatureModal.signatureUrl} // PDF URL for document preview
           documentTitle={signatureModal.documentTitle}
           assignmentId={signatureModal.assignmentId}
+          fieldPositions={signatureModal.fieldPositions}
           onSuccess={handleSignatureSuccess}
         />
       )}
@@ -408,7 +410,7 @@ function DocumentRow({
   onDownload,
 }: {
   document: any;
-  onSign: (url: string | null, title: string, assignmentId: number) => void;
+  onSign: (url: string | null, title: string, assignmentId: number, fieldPositions?: any[]) => void;
   onView: (document: any) => void;
   onDownload: (id: number, title: string) => void;
 }) {
@@ -498,7 +500,7 @@ function DocumentRow({
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:flex-shrink-0">
         {document.status === 'sent' && (
           <button
-            onClick={() => onSign(document.signatureUrl, document.title, document.id)}
+            onClick={() => onSign(document.signatureUrl, document.title, document.id, document.fieldPositions)}
             className="btn-primary flex items-center justify-center gap-2 whitespace-nowrap"
           >
             <PenTool className="w-4 h-4" />
