@@ -8,6 +8,8 @@ interface SignatureCanvasProps {
   width?: number;
   height?: number;
   className?: string;
+  showButtons?: boolean;
+  autoSaveOnDraw?: boolean;
 }
 
 export function SignatureCanvas({
@@ -16,6 +18,8 @@ export function SignatureCanvas({
   width = 500,
   height = 200,
   className = '',
+  showButtons = true,
+  autoSaveOnDraw = false,
 }: SignatureCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
@@ -37,6 +41,32 @@ export function SignatureCanvas({
     // Fill with white background
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Add native touch event listeners with { passive: false } to allow preventDefault
+    const handleTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      startDrawing(e as any);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      draw(e as any);
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      e.preventDefault();
+      stopDrawing();
+    };
+
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
+    };
   }, []);
 
   const getCoordinates = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
@@ -61,18 +91,14 @@ export function SignatureCanvas({
     }
   };
 
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if ('touches' in e) {
-      e.preventDefault();
-    }
-
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement> | TouchEvent) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const coords = getCoordinates(e);
+    const coords = getCoordinates(e as any);
     if (!coords) return;
 
     ctx.beginPath();
@@ -81,18 +107,14 @@ export function SignatureCanvas({
     setIsEmpty(false);
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement> | TouchEvent) => {
     if (!isDrawing) return;
-
-    if ('touches' in e) {
-      e.preventDefault();
-    }
 
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!ctx) return;
 
-    const coords = getCoordinates(e);
+    const coords = getCoordinates(e as any);
     if (!coords) return;
 
     ctx.lineTo(coords.x, coords.y);
@@ -101,6 +123,15 @@ export function SignatureCanvas({
 
   const stopDrawing = () => {
     setIsDrawing(false);
+
+    // Auto-save if enabled and canvas is not empty
+    if (autoSaveOnDraw && !isEmpty) {
+      const canvas = canvasRef.current;
+      if (canvas) {
+        const dataUrl = canvas.toDataURL('image/png');
+        onSave(dataUrl);
+      }
+    }
   };
 
   const clear = () => {
@@ -130,6 +161,13 @@ export function SignatureCanvas({
     onSave(dataUrl);
   };
 
+  // Expose clear method to parent
+  useEffect(() => {
+    if (canvasRef.current) {
+      (canvasRef.current as any).clearSignature = clear;
+    }
+  }, []);
+
   return (
     <div className={`flex flex-col gap-4 ${className}`}>
       <div className="border-2 border-gray-300 rounded-lg overflow-hidden bg-white">
@@ -141,34 +179,35 @@ export function SignatureCanvas({
           onMouseMove={draw}
           onMouseUp={stopDrawing}
           onMouseLeave={stopDrawing}
-          onTouchStart={startDrawing}
-          onTouchMove={draw}
-          onTouchEnd={stopDrawing}
           className="cursor-crosshair touch-none w-full h-auto"
         />
       </div>
 
-      <div className="flex gap-2 justify-end">
-        <button
-          onClick={clear}
-          disabled={isEmpty}
-          className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          Clear
-        </button>
-        <button
-          onClick={save}
-          disabled={isEmpty}
-          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          Save Signature
-        </button>
-      </div>
+      {showButtons && (
+        <>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={clear}
+              disabled={isEmpty}
+              className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Clear
+            </button>
+            <button
+              onClick={save}
+              disabled={isEmpty}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              Save Signature
+            </button>
+          </div>
 
-      {isEmpty && (
-        <p className="text-sm text-gray-500 text-center">
-          Sign above using your mouse or finger
-        </p>
+          {isEmpty && (
+            <p className="text-sm text-gray-500 text-center">
+              Sign above using your mouse or finger
+            </p>
+          )}
+        </>
       )}
     </div>
   );
