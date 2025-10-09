@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { Env, DocumentAssignmentWithTemplate, DocumentAssignment } from '../types';
 import { verifySession } from '../lib/auth';
 import { OpenSignClient } from '../lib/opensign';
 import { BitrixClient } from '../lib/bitrix';
@@ -166,7 +166,7 @@ signatureRoutes.post('/sign-native', async (c) => {
       FROM document_assignments da
       JOIN document_templates dt ON da.template_id = dt.id
       WHERE da.id = ? AND da.employee_id = ?
-    `).bind(body.assignmentId, session.employeeId).first<any>();
+    `).bind(body.assignmentId, session.employeeId).first<DocumentAssignmentWithTemplate>();
 
     if (!assignment) {
       return c.json({ error: 'Assignment not found or unauthorized' }, 404);
@@ -434,7 +434,7 @@ async function handleSignatureCompleted(env: Env, event: any): Promise<void> {
     // 1. Get assignment details from database
     const assignment = await env.DB.prepare(`
       SELECT * FROM document_assignments WHERE signature_request_id = ?
-    `).bind(requestId).first<any>();
+    `).bind(requestId).first<DocumentAssignment>();
 
     if (!assignment) {
       console.warn('[SIGNATURE COMPLETE] No assignment found for request:', requestId);

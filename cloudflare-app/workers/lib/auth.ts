@@ -6,6 +6,7 @@ import type { Env, SessionData, AuditLogEntry, RateLimitResult, BitrixEmployee }
 
 /**
  * Check rate limit for login attempts
+ * Uses atomic operations to prevent TOCTOU race conditions
  */
 export async function checkRateLimit(
   env: Env,
@@ -16,78 +17,90 @@ export async function checkRateLimit(
   const window = parseInt(env.RATE_LIMIT_WINDOW);
   const captchaThreshold = 3; // Show CAPTCHA after 3 attempts
 
-  // Check D1 rate limits
-  const result = await env.DB.prepare(`
-    SELECT attempts, blocked_until, first_attempt
+  // First, check if already blocked (read-only check is safe)
+  const blockedCheck = await env.DB.prepare(`
+    SELECT blocked_until
     FROM rate_limits
     WHERE identifier = ? AND attempt_type = ?
-      AND datetime(first_attempt, '+' || ? || ' seconds') > datetime('now')
+      AND blocked_until IS NOT NULL
+      AND datetime(blocked_until) > datetime('now')
   `)
-    .bind(identifier, type, window.toString())
-    .first<{ attempts: number; blocked_until: string | null; first_attempt: string }>();
+    .bind(identifier, type)
+    .first<{ blocked_until: string }>();
 
-  if (result) {
-    // Check if blocked
-    if (result.blocked_until && new Date(result.blocked_until) > new Date()) {
-      return {
-        allowed: false,
-        remaining: 0,
-        resetAt: Math.floor(new Date(result.blocked_until).getTime() / 1000),
-        requiresCaptcha: true
-      };
-    }
-
-    // Check if max attempts reached
-    if (result.attempts >= maxAttempts) {
-      // Block for the window duration
-      const blockedUntil = new Date(Date.now() + window * 1000).toISOString();
-
-      await env.DB.prepare(`
-        UPDATE rate_limits
-        SET blocked_until = ?, last_attempt = datetime('now')
-        WHERE identifier = ? AND attempt_type = ?
-      `)
-        .bind(blockedUntil, identifier, type)
-        .run();
-
-      return {
-        allowed: false,
-        remaining: 0,
-        resetAt: Math.floor(new Date(blockedUntil).getTime() / 1000),
-        requiresCaptcha: true
-      };
-    }
-
-    // Increment attempts
-    await env.DB.prepare(`
-      UPDATE rate_limits
-      SET attempts = attempts + 1, last_attempt = datetime('now')
-      WHERE identifier = ? AND attempt_type = ?
-    `)
-      .bind(identifier, type)
-      .run();
-
+  if (blockedCheck) {
     return {
-      allowed: true,
-      remaining: maxAttempts - result.attempts - 1,
-      resetAt: Math.floor((new Date(result.first_attempt).getTime() + window * 1000) / 1000),
-      requiresCaptcha: result.attempts + 1 >= captchaThreshold
+      allowed: false,
+      remaining: 0,
+      resetAt: Math.floor(new Date(blockedCheck.blocked_until).getTime() / 1000),
+      requiresCaptcha: true
     };
   }
 
-  // First attempt - create record
-  await env.DB.prepare(`
+  // Atomically increment attempts and get updated value
+  // This prevents race conditions by combining check and increment in one operation
+  const result = await env.DB.prepare(`
     INSERT INTO rate_limits (identifier, attempt_type, attempts, first_attempt, last_attempt)
     VALUES (?, ?, 1, datetime('now'), datetime('now'))
+    ON CONFLICT(identifier, attempt_type) DO UPDATE SET
+      attempts = CASE
+        WHEN datetime(first_attempt, '+' || ? || ' seconds') <= datetime('now')
+        THEN 1  -- Window expired, reset to 1
+        ELSE attempts + 1  -- Within window, increment
+      END,
+      first_attempt = CASE
+        WHEN datetime(first_attempt, '+' || ? || ' seconds') <= datetime('now')
+        THEN datetime('now')  -- Window expired, reset timestamp
+        ELSE first_attempt  -- Keep original timestamp
+      END,
+      last_attempt = datetime('now')
+    RETURNING attempts, first_attempt, blocked_until
   `)
-    .bind(identifier, type)
-    .run();
+    .bind(identifier, type, window.toString(), window.toString())
+    .first<{ attempts: number; first_attempt: string; blocked_until: string | null }>();
+
+  if (!result) {
+    // Should never happen, but handle gracefully
+    console.error('[checkRateLimit] No result from INSERT/UPDATE RETURNING');
+    return {
+      allowed: false,
+      remaining: 0,
+      resetAt: Math.floor((Date.now() + window * 1000) / 1000),
+      requiresCaptcha: true
+    };
+  }
+
+  const currentAttempts = result.attempts;
+
+  // Check if we just exceeded the limit
+  if (currentAttempts >= maxAttempts) {
+    // Block for the window duration
+    const blockedUntil = new Date(Date.now() + window * 1000).toISOString();
+
+    await env.DB.prepare(`
+      UPDATE rate_limits
+      SET blocked_until = ?
+      WHERE identifier = ? AND attempt_type = ?
+    `)
+      .bind(blockedUntil, identifier, type)
+      .run();
+
+    return {
+      allowed: false,
+      remaining: 0,
+      resetAt: Math.floor(new Date(blockedUntil).getTime() / 1000),
+      requiresCaptcha: true
+    };
+  }
+
+  // Calculate reset time
+  const resetAt = Math.floor((new Date(result.first_attempt).getTime() + window * 1000) / 1000);
 
   return {
     allowed: true,
-    remaining: maxAttempts - 1,
-    resetAt: Math.floor((Date.now() + window * 1000) / 1000),
-    requiresCaptcha: false
+    remaining: maxAttempts - currentAttempts,
+    resetAt,
+    requiresCaptcha: currentAttempts >= captchaThreshold
   };
 }
 

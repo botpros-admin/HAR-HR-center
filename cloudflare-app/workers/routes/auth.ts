@@ -5,7 +5,7 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import type { Env, LoginRequest, SSNVerificationRequest, SessionData, AuditLogEntry } from '../types';
+import type { Env, LoginRequest, SSNVerificationRequest, SessionData, AuditLogEntry, BitrixEmployee, SystemConfigResult } from '../types';
 import { BitrixClient } from '../lib/bitrix';
 import { checkRateLimit, verifyCaptcha, createSession, verifySession, auditLog, resetRateLimit } from '../lib/auth';
 import { maskSSN } from '../lib/pii';
@@ -233,6 +233,29 @@ auth.post('/verify-ssn', async (c) => {
 
     const preAuth = JSON.parse(preAuthData);
 
+    // Validate IP address matches (prevent session hijacking)
+    if (preAuth.ipAddress !== ipAddress) {
+      await auditLog(env, {
+        employeeId: preAuth.employeeId,
+        bitrixId: preAuth.bitrixId,
+        badgeNumber: preAuth.badgeNumber,
+        action: 'ssn_verification',
+        status: 'blocked',
+        ipAddress,
+        userAgent,
+        metadata: {
+          reason: 'ip_mismatch',
+          originalIp: preAuth.ipAddress,
+          currentIp: ipAddress
+        }
+      });
+
+      // Delete the compromised session
+      await env.CACHE.delete(`preauth:${sessionId}`);
+
+      return c.json({ error: 'Session expired. Please log in again.' }, 401);
+    }
+
     // Verify SSN
     if (preAuth.ssnLast4 !== ssnLast4) {
       await auditLog(env, {
@@ -380,7 +403,7 @@ auth.get('/session', async (c) => {
 /**
  * Helper: Determine if SSN verification is required
  */
-async function shouldRequireSSN(env: Env, employee: any): Promise<boolean> {
+async function shouldRequireSSN(env: Env, employee: BitrixEmployee): Promise<boolean> {
   // Skip SSN verification if employee doesn't have an SSN on file
   if (!employee.ufCrm6Ssn || employee.ufCrm6Ssn.trim() === '') {
     return false;
@@ -388,7 +411,7 @@ async function shouldRequireSSN(env: Env, employee: any): Promise<boolean> {
 
   const config = await env.DB.prepare(
     `SELECT value FROM system_config WHERE key = 'require_ssn_for_sensitive'`
-  ).first<{ value: string }>();
+  ).first<SystemConfigResult>();
 
   return config?.value === 'true';
 }

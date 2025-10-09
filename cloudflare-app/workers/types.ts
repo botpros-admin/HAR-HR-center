@@ -189,3 +189,13 @@ export interface DocumentAssignment {
   bitrixFileId?: string;
   notes?: string;
 }
+
+// Database query result types
+export interface DocumentAssignmentWithTemplate extends DocumentAssignment {
+  template_url: string;
+  title: string;
+}
+
+export interface SystemConfigResult {
+  value: string;
+}

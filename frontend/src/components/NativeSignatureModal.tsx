@@ -370,6 +370,34 @@ export function NativeSignatureModal({
     );
   };
 
+  // Convert field positions from admin render space to PDF points
+  const convertFieldsToPdfCoordinates = (fields: FieldPosition[]): any[] => {
+    if (!pageWidth || !pageHeight) return [];
+
+    const ADMIN_RENDER_WIDTH = 800;
+    const adminAspectRatio = pageHeight / pageWidth;
+    const ADMIN_RENDER_HEIGHT = ADMIN_RENDER_WIDTH * adminAspectRatio;
+
+    return fields.map((field) => {
+      // Convert from admin render space (800px wide) to PDF points
+      const xInPdfPoints = (field.x / ADMIN_RENDER_WIDTH) * pageWidth;
+      const widthInPdfPoints = (field.width / ADMIN_RENDER_WIDTH) * pageWidth;
+      const heightInPdfPoints = (field.height / ADMIN_RENDER_HEIGHT) * pageHeight;
+
+      // PDF coordinates are from bottom-left, admin UI is from top-left
+      // So we need to flip the Y coordinate
+      const yInPdfPoints = pageHeight - ((field.y / ADMIN_RENDER_HEIGHT) * pageHeight) - heightInPdfPoints;
+
+      return {
+        page: field.page,
+        x: Math.round(xInPdfPoints),
+        y: Math.round(yInPdfPoints),
+        width: Math.round(widthInPdfPoints),
+        height: Math.round(heightInPdfPoints),
+      };
+    });
+  };
+
   // Handle submit
   const handleSubmit = async () => {
     if (!allRequiredFieldsFilled) {
@@ -381,13 +409,33 @@ export function NativeSignatureModal({
     setError(null);
 
     try {
-      // For now, send the first signature field
-      const signatureField = parsedFieldPositions.find((f: FieldPosition) => f.type === 'signature');
-      const signatureData = signatureField ? filledFields.get(signatureField.id!) : null;
+      // Get signature fields that were filled
+      const signatureFields = parsedFieldPositions.filter((f: FieldPosition) =>
+        f.type === 'signature' && filledFields.has(f.id!)
+      );
+
+      if (signatureFields.length === 0) {
+        throw new Error('At least one signature is required');
+      }
+
+      // Use the first signature for the signature image
+      const primarySignatureField = signatureFields[0];
+      const signatureData = filledFields.get(primarySignatureField.id!);
 
       if (!signatureData) {
-        throw new Error('Signature is required');
+        throw new Error('Signature data not found');
       }
+
+      // Convert all signature fields to PDF coordinates
+      const pdfSignatureFields = convertFieldsToPdfCoordinates(signatureFields);
+
+      console.log('[NativeSignatureModal] Submitting signature:', {
+        assignmentId,
+        signatureFieldsCount: pdfSignatureFields.length,
+        fields: pdfSignatureFields,
+        pageWidth,
+        pageHeight,
+      });
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/signatures/sign-native`, {
         method: 'POST',
@@ -396,13 +444,7 @@ export function NativeSignatureModal({
         body: JSON.stringify({
           assignmentId,
           signatureDataUrl: signatureData.data,
-          signatureFields: [{
-            page: 0,
-            x: 100,
-            y: 100,
-            width: 200,
-            height: 100,
-          }],
+          signatureFields: pdfSignatureFields,
         }),
       });
 
