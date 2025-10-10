@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Loader2, CheckCircle, AlertCircle, FileText, PenTool } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { SignatureCanvas } from './SignatureCanvas';
+import { SecureSignatureBox } from './SecureSignatureBox';
 
 interface FieldPosition {
   type: 'signature' | 'initials' | 'date' | 'checkbox' | 'text';
@@ -391,15 +392,25 @@ export function NativeSignatureModal({
         )}
 
         {isFilled ? (
-          <div className="absolute inset-0 flex items-center justify-center p-1">
+          <>
             {(field.type === 'signature' || field.type === 'initials') && filledData ? (
-              <img src={filledData.data} alt={field.label} className="w-full h-full object-contain" />
-            ) : field.type === 'checkbox' ? (
-              <CheckCircle className="w-full h-full text-green-600 p-1" />
+              <div className="absolute inset-0">
+                <SecureSignatureBox
+                  signatureDataUrl={filledData.data}
+                  timestamp={Date.now()}
+                  employeeId={assignmentId.toString()}
+                />
+              </div>
             ) : (
-              <span className="text-xs font-medium text-center truncate px-1">{filledData?.data}</span>
+              <div className="absolute inset-0 flex items-center justify-center p-1">
+                {field.type === 'checkbox' ? (
+                  <CheckCircle className="w-full h-full text-green-600 p-1" />
+                ) : (
+                  <span className="text-xs font-medium text-center truncate px-1">{filledData?.data}</span>
+                )}
+              </div>
             )}
-          </div>
+          </>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-xs font-medium opacity-60">
             <span className="text-center px-1">{field.label}</span>
