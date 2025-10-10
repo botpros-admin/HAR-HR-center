@@ -602,15 +602,16 @@ export function NativeSignatureModal({
                                 loading=""
                               />
 
-                              {/* Per-page field overlay */}
-                              <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
-                                <div className="relative w-full h-full pointer-events-auto">
-                                  {convertedFields
-                                    .filter((field: FieldPosition) => field.page === pageNum)
-                                    .map((field: FieldPosition, index: number) =>
-                                      renderFieldOverlay(field, index)
-                                    )}
-                                </div>
+                              {/* Per-page field overlay - EXACT same structure as admin */}
+                              <div
+                                className="absolute top-0 left-0 w-full h-full rounded-lg"
+                                style={{ height: pageHeights[pageNum - 1] || 'auto' }}
+                              >
+                                {convertedFields
+                                  .filter((field: FieldPosition) => field.page === pageNum)
+                                  .map((field: FieldPosition, index: number) =>
+                                    renderFieldOverlay(field, index)
+                                  )}
                               </div>
                             </div>
                           ))}
