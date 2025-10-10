@@ -759,7 +759,7 @@ function FieldEditorModal({
     } catch (e) {
       console.error('Failed to parse field positions:', e);
     }
-  }, [template.fieldPositions, allPagesLoaded, pageWidths, pageHeights]);
+  }, [template.fieldPositions, allPagesLoaded, pageWidths, pageHeights, loadedPages, numPages]);
 
   const fieldTypes = [
     { type: 'signature' as const, label: 'Signature', icon: MousePointer, color: 'bg-blue-600', example: 'John Doe' },
@@ -1121,13 +1121,19 @@ function FieldEditorModal({
                           loading=""
                         />
 
-                        {/* Per-page field overlay with drop zone */}
+                        {/* Per-page field overlay - MUST use exact same dimensions as percentage calculation */}
                         <div
                           ref={(el) => {
                             if (el) pageOverlayRefs.set(pageNum, el);
                           }}
-                          className="absolute top-0 left-0 w-full h-full rounded-lg"
-                          style={{ height: pageHeights[pageNum - 1] || 'auto' }}
+                          className="absolute top-0 left-0 rounded-lg"
+                          style={{
+                            width: '800px',
+                            height: pageWidths[pageNum - 1] && pageHeights[pageNum - 1]
+                              ? `${(800 / pageWidths[pageNum - 1]) * pageHeights[pageNum - 1]}px`
+                              : 'auto',
+                            pointerEvents: 'auto'
+                          }}
                           onDragOver={(e) => handleDragOver(e, pageNum)}
                           onDrop={(e) => handleDrop(e, pageNum)}
                           onDragLeave={handleDragLeave}

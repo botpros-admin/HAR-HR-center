@@ -81,7 +81,7 @@ export function NativeSignatureModal({
   const [pageHeights, setPageHeights] = useState<number[]>([]);
   const [loadedPages, setLoadedPages] = useState<Set<number>>(new Set());
   const [convertedFields, setConvertedFields] = useState<FieldPosition[]>([]);
-  const [pdfRenderWidth, setPdfRenderWidth] = useState<number>(800);
+  const pageRefs = React.useRef<Map<number, HTMLDivElement>>(new Map());
   const pdfContainerRef = React.useRef<HTMLDivElement>(null);
 
   const queryClient = useQueryClient();
@@ -109,10 +109,6 @@ export function NativeSignatureModal({
   useEffect(() => {
     if (!parsedFieldPositions.length || !allPagesLoaded) return;
 
-    console.log('🔍 [EMPLOYEE DEBUG] Starting field conversion...');
-    console.log('📊 Raw field positions from DB:', parsedFieldPositions);
-    console.log('📐 Page dimensions:', { pageWidths, pageHeights });
-
     try {
       // Convert from PDF points to percentage coordinates
       const converted = parsedFieldPositions.map((f: any, i: number) => {
@@ -120,25 +116,11 @@ export function NativeSignatureModal({
         const pageWidth = pageWidths[pageIndex] || 800;
         const pageHeight = pageHeights[pageIndex] || 1132;
 
-        console.log(`\n🔸 Field ${i} (${f.type}):`);
-        console.log('  Raw PDF points:', { x: f.x, y: f.y, width: f.width, height: f.height });
-        console.log('  Page dimensions:', { pageWidth, pageHeight, pageIndex });
-
         // Convert PDF points to percentages
-        // X: straightforward conversion (left edge)
-        // Y: flip axis back (PDF origin is bottom-left, React is top-left)
-        //    PDF Y is the BOTTOM of the field, React Y is the TOP
         const percentX = (f.x / pageWidth) * 100;
         const percentHeight = (f.height / pageHeight) * 100;
         const percentY = ((pageHeight - f.y - f.height) / pageHeight) * 100;
         const percentWidth = (f.width / pageWidth) * 100;
-
-        console.log('  Converted percentages:', {
-          x: percentX.toFixed(2) + '%',
-          y: percentY.toFixed(2) + '%',
-          width: percentWidth.toFixed(2) + '%',
-          height: percentHeight.toFixed(2) + '%'
-        });
 
         return {
           ...f,
@@ -154,13 +136,11 @@ export function NativeSignatureModal({
         };
       });
 
-      console.log('\n✅ [EMPLOYEE DEBUG] Conversion complete!');
-      console.log('📦 Converted fields:', converted);
       setConvertedFields(converted);
     } catch (e) {
-      console.error('❌ [EMPLOYEE DEBUG] Failed to convert field positions:', e);
+      console.error('Failed to convert field positions:', e);
     }
-  }, [parsedFieldPositions, allPagesLoaded, pageWidths, pageHeights]);
+  }, [parsedFieldPositions, allPagesLoaded, pageWidths, pageHeights, numPages, loadedPages]);
 
   // Notify parent when document is fully loaded
   useEffect(() => {
@@ -188,24 +168,6 @@ export function NativeSignatureModal({
         window.scrollTo(0, scrollY);
       };
     }
-  }, [isOpen]);
-
-  // Calculate responsive PDF width
-  useEffect(() => {
-    const updatePdfWidth = () => {
-      if (pdfContainerRef.current) {
-        const containerWidth = pdfContainerRef.current.offsetWidth;
-        // Set PDF width to container width, clamped between 400px and 1200px
-        const optimalWidth = Math.max(400, Math.min(containerWidth - 40, 1200));
-        setPdfRenderWidth(optimalWidth);
-      }
-    };
-
-    // Update on mount and window resize
-    updatePdfWidth();
-    window.addEventListener('resize', updatePdfWidth);
-
-    return () => window.removeEventListener('resize', updatePdfWidth);
   }, [isOpen]);
 
   // Dynamically import react-pdf
@@ -395,19 +357,6 @@ export function NativeSignatureModal({
     const isFilled = filledFields.has(field.id!);
     const filledData = filledFields.get(field.id!);
 
-    // Debug log on first render only
-    if (index === 0) {
-      console.log(`\n🎨 [EMPLOYEE RENDER] Rendering field overlays...`);
-    }
-    console.log(`  Field ${index} style:`, {
-      left: `${field.x}%`,
-      top: `${field.y}%`,
-      width: `${field.width}%`,
-      height: `${field.height}%`,
-      type: field.type,
-      label: field.label
-    });
-
     const getFieldColor = () => {
       if (isFilled) return 'border-green-500 bg-green-100';
       switch (field.type) {
@@ -491,6 +440,11 @@ export function NativeSignatureModal({
         f.type === 'signature' && filledFields.has(f.id || `field-${parsedFieldPositions.indexOf(f)}`)
       );
 
+      // 🚨 CRITICAL DEBUG LOGGING
+      console.error('🚨🚨🚨 [CRITICAL SUBMIT DEBUG] ================================');
+      console.error('parsedFieldPositions (should be PDF points from DB):', JSON.stringify(parsedFieldPositions, null, 2));
+      console.error('signatureFields (filtered):', JSON.stringify(signatureFields, null, 2));
+
       if (signatureFields.length === 0) {
         throw new Error('At least one signature is required');
       }
@@ -505,6 +459,14 @@ export function NativeSignatureModal({
 
       // Convert all signature fields to PDF coordinates
       const pdfSignatureFields = convertFieldsToPdfCoordinates(signatureFields);
+
+      console.error('🚨 pdfSignatureFields (BEING SENT TO BACKEND):', JSON.stringify(pdfSignatureFields, null, 2));
+      console.error('🚨 Expected PDF points from DB: x=330.05 (NOT 38.56), y=866.70 (NOT 17.09)');
+      console.error('🚨 If you see small numbers like 38.56, THE BUG IS CONFIRMED!');
+      console.error('================================');
+
+      // SHOW VISIBLE ALERT
+      alert(`SUBMIT DEBUG:\nFirst field being sent:\nx: ${pdfSignatureFields[0].x}\ny: ${pdfSignatureFields[0].y}\n\nExpected: x≈330, y≈866\nIf showing x≈38, y≈17 = BUG!`);
 
       console.log('[NativeSignatureModal] Submitting signature:', {
         assignmentId,
@@ -524,7 +486,16 @@ export function NativeSignatureModal({
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
+        const errorText = await response.text();
+        console.error('🚨 Backend error response:', errorText);
+        alert(`Backend Error:\nStatus: ${response.status}\nResponse: ${errorText}`);
+
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          throw new Error(`Backend error (${response.status}): ${errorText}`);
+        }
         throw new Error(errorData.message || 'Failed to sign document');
       }
 
@@ -666,7 +637,15 @@ export function NativeSignatureModal({
                           className={allPagesLoaded ? '' : 'hidden'}
                         >
                           {Array.from({ length: numPages }, (_, i) => i + 1).map(pageNum => (
-                            <div key={pageNum} className="relative mb-4 bg-white shadow-lg rounded-lg">
+                            <div
+                              key={pageNum}
+                              ref={(el) => {
+                                if (el) {
+                                  pageRefs.current.set(pageNum, el);
+                                }
+                              }}
+                              className="relative mb-4 bg-white shadow-lg rounded-lg"
+                            >
                               {/* Page number indicator */}
                               <div className="absolute top-2 right-2 bg-gray-800 bg-opacity-75 text-white text-xs px-2 py-1 rounded z-20 pointer-events-none">
                                 Page {pageNum} of {numPages}
@@ -674,7 +653,7 @@ export function NativeSignatureModal({
 
                               <pdfComponents.Page
                                 pageNumber={pageNum}
-                                width={pdfRenderWidth}
+                                width={800}
                                 renderTextLayer={false}
                                 renderAnnotationLayer={false}
                                 onLoadSuccess={(page: any) => {
@@ -694,12 +673,14 @@ export function NativeSignatureModal({
                                 loading=""
                               />
 
-                              {/* Per-page field overlay - LOCKED to exact PDF dimensions */}
+                              {/* Per-page field overlay - MUST use exact same dimensions as percentage calculation */}
                               <div
-                                className="absolute top-0 left-0 rounded-lg"
+                                className="absolute top-0 left-0"
                                 style={{
-                                  width: `${pdfRenderWidth}px`,
-                                  height: pageWidths[pageNum - 1] ? `${(pdfRenderWidth / pageWidths[pageNum - 1]) * pageHeights[pageNum - 1]}px` : 'auto',
+                                  width: '800px',
+                                  height: pageWidths[pageNum - 1] && pageHeights[pageNum - 1]
+                                    ? `${(800 / pageWidths[pageNum - 1]) * pageHeights[pageNum - 1]}px`
+                                    : 'auto',
                                   pointerEvents: 'none'
                                 }}
                               >
