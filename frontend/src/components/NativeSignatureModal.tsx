@@ -100,12 +100,20 @@ export function NativeSignatureModal({
   useEffect(() => {
     if (!parsedFieldPositions.length || !allPagesLoaded) return;
 
+    console.log('🔍 [EMPLOYEE DEBUG] Starting field conversion...');
+    console.log('📊 Raw field positions from DB:', parsedFieldPositions);
+    console.log('📐 Page dimensions:', { pageWidths, pageHeights });
+
     try {
       // Convert from PDF points to percentage coordinates
       const converted = parsedFieldPositions.map((f: any, i: number) => {
         const pageIndex = (f.page || f.pageNumber || 1) - 1;
         const pageWidth = pageWidths[pageIndex] || 800;
         const pageHeight = pageHeights[pageIndex] || 1132;
+
+        console.log(`\n🔸 Field ${i} (${f.type}):`);
+        console.log('  Raw PDF points:', { x: f.x, y: f.y, width: f.width, height: f.height });
+        console.log('  Page dimensions:', { pageWidth, pageHeight, pageIndex });
 
         // Convert PDF points to percentages
         // X: straightforward conversion (left edge)
@@ -115,6 +123,13 @@ export function NativeSignatureModal({
         const percentHeight = (f.height / pageHeight) * 100;
         const percentY = ((pageHeight - f.y - f.height) / pageHeight) * 100;
         const percentWidth = (f.width / pageWidth) * 100;
+
+        console.log('  Converted percentages:', {
+          x: percentX.toFixed(2) + '%',
+          y: percentY.toFixed(2) + '%',
+          width: percentWidth.toFixed(2) + '%',
+          height: percentHeight.toFixed(2) + '%'
+        });
 
         return {
           ...f,
@@ -130,9 +145,11 @@ export function NativeSignatureModal({
         };
       });
 
+      console.log('\n✅ [EMPLOYEE DEBUG] Conversion complete!');
+      console.log('📦 Converted fields:', converted);
       setConvertedFields(converted);
     } catch (e) {
-      console.error('Failed to convert field positions:', e);
+      console.error('❌ [EMPLOYEE DEBUG] Failed to convert field positions:', e);
     }
   }, [parsedFieldPositions, allPagesLoaded, pageWidths, pageHeights]);
 
@@ -327,6 +344,19 @@ export function NativeSignatureModal({
   const renderFieldOverlay = (field: FieldPosition, index: number) => {
     const isFilled = filledFields.has(field.id!);
     const filledData = filledFields.get(field.id!);
+
+    // Debug log on first render only
+    if (index === 0) {
+      console.log(`\n🎨 [EMPLOYEE RENDER] Rendering field overlays...`);
+    }
+    console.log(`  Field ${index} style:`, {
+      left: `${field.x}%`,
+      top: `${field.y}%`,
+      width: `${field.width}%`,
+      height: `${field.height}%`,
+      type: field.type,
+      label: field.label
+    });
 
     const getFieldColor = () => {
       if (isFilled) return 'border-green-500 bg-green-100';
