@@ -392,25 +392,15 @@ export function NativeSignatureModal({
         )}
 
         {isFilled ? (
-          <>
+          <div className="absolute inset-0 flex items-center justify-center p-1">
             {(field.type === 'signature' || field.type === 'initials') && filledData ? (
-              <div className="absolute inset-0">
-                <SecureSignatureBox
-                  signatureDataUrl={filledData.data}
-                  timestamp={Date.now()}
-                  employeeId={assignmentId.toString()}
-                />
-              </div>
+              <img src={filledData.data} alt={field.label} className="w-full h-full object-contain" />
+            ) : field.type === 'checkbox' ? (
+              <CheckCircle className="w-full h-full text-green-600 p-1" />
             ) : (
-              <div className="absolute inset-0 flex items-center justify-center p-1">
-                {field.type === 'checkbox' ? (
-                  <CheckCircle className="w-full h-full text-green-600 p-1" />
-                ) : (
-                  <span className="text-xs font-medium text-center truncate px-1">{filledData?.data}</span>
-                )}
-              </div>
+              <span className="text-xs font-medium text-center truncate px-1">{filledData?.data}</span>
             )}
-          </>
+          </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-xs font-medium opacity-60">
             <span className="text-center px-1">{field.label}</span>
@@ -798,16 +788,26 @@ export function NativeSignatureModal({
                         </p>
                       </div>
 
-                      {/* Signature Canvas */}
+                      {/* Signature Canvas with Security Features */}
                       <div className="relative flex-shrink-0">
-                        <SignatureCanvas
-                          onSave={handleSaveSignature}
-                          onClear={() => setTempSignature(null)}
-                          width={activeField.type === 'initials' ? 300 : 500}
-                          height={activeField.type === 'initials' ? 150 : 200}
-                          showButtons={false}
-                          autoSaveOnDraw={true}
-                        />
+                        {tempSignature ? (
+                          <div className="relative" style={{ width: activeField.type === 'initials' ? 300 : 500, height: activeField.type === 'initials' ? 150 : 200 }}>
+                            <SecureSignatureBox
+                              signatureDataUrl={tempSignature}
+                              timestamp={Date.now()}
+                              employeeId={assignmentId.toString()}
+                            />
+                          </div>
+                        ) : (
+                          <SignatureCanvas
+                            onSave={handleSaveSignature}
+                            onClear={() => setTempSignature(null)}
+                            width={activeField.type === 'initials' ? 300 : 500}
+                            height={activeField.type === 'initials' ? 150 : 200}
+                            showButtons={false}
+                            autoSaveOnDraw={true}
+                          />
+                        )}
                       </div>
                     </>
                   ) : (
@@ -832,15 +832,15 @@ export function NativeSignatureModal({
                       </div>
 
                       <div className="flex-1 flex items-center justify-center min-h-0">
-                        {/* Signature Preview Area */}
+                        {/* Signature Preview Area with Security Features */}
                         <div className="relative w-full" style={{ height: '200px' }}>
                           <div className="relative h-full">
-                            {typedName ? (
-                              <div className="border-2 border-gray-300 rounded-lg bg-white p-4 w-full h-full flex items-center justify-center">
-                                <p style={{ fontFamily: '"Dancing Script", cursive', fontSize: '48px', color: '#000', lineHeight: '1' }}>
-                                  {typedName}
-                                </p>
-                              </div>
+                            {tempSignature ? (
+                              <SecureSignatureBox
+                                signatureDataUrl={tempSignature}
+                                timestamp={Date.now()}
+                                employeeId={assignmentId.toString()}
+                              />
                             ) : (
                               <div className="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 w-full h-full flex items-center justify-center text-gray-400 text-sm">
                                 Your signature will appear here
