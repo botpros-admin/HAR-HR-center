@@ -795,7 +795,7 @@ export function NativeSignatureModal({
                       </div>
 
                       {/* Signature Canvas with Security Features - Always visible background */}
-                      <div className="relative flex-shrink-0" style={{ width: activeField.type === 'initials' ? 300 : 500, height: activeField.type === 'initials' ? 150 : 200 }}>
+                      <div className="relative flex-shrink-0 mx-auto" style={{ width: activeField.type === 'initials' ? 300 : 500, height: activeField.type === 'initials' ? 150 : 200 }}>
                         {/* Security frame - always visible as background */}
                         <SecureSignatureFrame
                           width={activeField.type === 'initials' ? 300 : 500}
