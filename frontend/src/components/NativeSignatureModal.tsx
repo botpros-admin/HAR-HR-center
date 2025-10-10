@@ -191,10 +191,10 @@ export function NativeSignatureModal({
   }, [parsedFieldPositions, filledFields]);
 
   // Generate signature from typed name
-  const generateTypedSignature = (name: string): string => {
+  const generateTypedSignature = (name: string, isInitials: boolean = false): string => {
     const canvas = document.createElement('canvas');
-    canvas.width = 500;
-    canvas.height = 200;
+    canvas.width = isInitials ? 300 : 500;
+    canvas.height = isInitials ? 150 : 200;
     const ctx = canvas.getContext('2d');
 
     if (!ctx) return '';
@@ -203,8 +203,9 @@ export function NativeSignatureModal({
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Set cursive font
-    ctx.font = '64px "Dancing Script", cursive';
+    // Set cursive font - smaller for initials
+    const fontSize = isInitials ? 48 : 64;
+    ctx.font = `${fontSize}px "Dancing Script", cursive`;
     ctx.fillStyle = '#000000';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -221,7 +222,8 @@ export function NativeSignatureModal({
     setTypedName(name);
 
     if (name.trim()) {
-      const signatureDataUrl = generateTypedSignature(name);
+      const isInitials = activeField?.type === 'initials';
+      const signatureDataUrl = generateTypedSignature(name, isInitials);
       setTempSignature(signatureDataUrl);
     } else {
       setTempSignature(null);
@@ -299,21 +301,19 @@ export function NativeSignatureModal({
     }
   };
 
-  // Convert coordinates
+  // Convert coordinates from PDF points to screen pixels
   const convertCoordinates = (field: FieldPosition) => {
     if (!pageWidth || !pageHeight) return null;
 
-    const ADMIN_RENDER_WIDTH = 800;
-    const adminAspectRatio = pageHeight / pageWidth;
-    const ADMIN_RENDER_HEIGHT = ADMIN_RENDER_WIDTH * adminAspectRatio;
-
+    // Fields are stored in PDF points - use actual PDF page dimensions for conversion
     const ourRenderWidth = actualRenderWidth > 0 ? actualRenderWidth : pageWidth * scale;
     const ourRenderHeight = actualRenderHeight > 0 ? actualRenderHeight : pageHeight * scale;
 
-    const x = (field.x / ADMIN_RENDER_WIDTH) * ourRenderWidth;
-    const width = (field.width / ADMIN_RENDER_WIDTH) * ourRenderWidth;
-    const height = (field.height / ADMIN_RENDER_HEIGHT) * ourRenderHeight;
-    const y = ourRenderHeight - ((field.y / ADMIN_RENDER_HEIGHT) * ourRenderHeight) - height;
+    // Convert from PDF points to screen pixels using actual PDF dimensions
+    const x = (field.x / pageWidth) * ourRenderWidth;
+    const width = (field.width / pageWidth) * ourRenderWidth;
+    const height = (field.height / pageHeight) * ourRenderHeight;
+    const y = ourRenderHeight - ((field.y / pageHeight) * ourRenderHeight) - height;
 
     return { x, y, width, height };
   };
@@ -370,30 +370,18 @@ export function NativeSignatureModal({
     );
   };
 
-  // Convert field positions from admin render space to PDF points
+  // Fields are already in PDF points from database - pass through with proper structure
   const convertFieldsToPdfCoordinates = (fields: FieldPosition[]): any[] => {
     if (!pageWidth || !pageHeight) return [];
 
-    const ADMIN_RENDER_WIDTH = 800;
-    const adminAspectRatio = pageHeight / pageWidth;
-    const ADMIN_RENDER_HEIGHT = ADMIN_RENDER_WIDTH * adminAspectRatio;
-
     return fields.map((field) => {
-      // Convert from admin render space (800px wide) to PDF points
-      const xInPdfPoints = (field.x / ADMIN_RENDER_WIDTH) * pageWidth;
-      const widthInPdfPoints = (field.width / ADMIN_RENDER_WIDTH) * pageWidth;
-      const heightInPdfPoints = (field.height / ADMIN_RENDER_HEIGHT) * pageHeight;
-
-      // PDF coordinates are from bottom-left, admin UI is from top-left
-      // So we need to flip the Y coordinate
-      const yInPdfPoints = pageHeight - ((field.y / ADMIN_RENDER_HEIGHT) * pageHeight) - heightInPdfPoints;
-
+      // Fields are already stored in PDF points - no conversion needed
       return {
         page: field.page,
-        x: Math.round(xInPdfPoints),
-        y: Math.round(yInPdfPoints),
-        width: Math.round(widthInPdfPoints),
-        height: Math.round(heightInPdfPoints),
+        x: Math.round(field.x),
+        y: Math.round(field.y),
+        width: Math.round(field.width),
+        height: Math.round(field.height),
       };
     });
   };
@@ -627,7 +615,7 @@ export function NativeSignatureModal({
                         <div ref={pageContainerRef} className="relative inline-block">
                           <pdfComponents.Page
                             pageNumber={pageNumber}
-                            scale={scale}
+                            width={800}
                             renderTextLayer={false}
                             renderAnnotationLayer={false}
                             className="max-w-full"
@@ -770,7 +758,9 @@ export function NativeSignatureModal({
                     <>
                       <div className="mb-3">
                         <p className="text-xs text-gray-600 text-center">
-                          {isTouchDevice ? 'Draw your signature with your finger or stylus' : 'Draw your signature using mouse or trackpad'}
+                          {activeField.type === 'initials'
+                            ? (isTouchDevice ? 'Draw your initials with your finger or stylus' : 'Draw your initials using mouse or trackpad')
+                            : (isTouchDevice ? 'Draw your signature with your finger or stylus' : 'Draw your signature using mouse or trackpad')}
                         </p>
                       </div>
 
@@ -914,8 +904,8 @@ export function NativeSignatureModal({
                           <SignatureCanvas
                             onSave={handleSaveSignature}
                             onClear={() => setTempSignature(null)}
-                            width={500}
-                            height={200}
+                            width={activeField.type === 'initials' ? 300 : 500}
+                            height={activeField.type === 'initials' ? 150 : 200}
                             showButtons={false}
                             autoSaveOnDraw={true}
                           />
@@ -926,17 +916,21 @@ export function NativeSignatureModal({
                     <>
                       <div className="mb-3 flex-shrink-0">
                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Type your full name
+                          {activeField.type === 'initials' ? 'Type your initials' : 'Type your full name'}
                         </label>
                         <input
                           type="text"
                           value={typedName}
                           onChange={handleTypedNameChange}
-                          placeholder="Enter your name"
+                          placeholder={activeField.type === 'initials' ? 'Enter initials (e.g., JD)' : 'Enter your name'}
                           className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all text-base"
                           autoFocus
                         />
-                        <p className="text-xs text-gray-500 mt-2">Your name will appear in cursive script</p>
+                        <p className="text-xs text-gray-500 mt-2">
+                          {activeField.type === 'initials'
+                            ? 'Your initials will appear in cursive script'
+                            : 'Your name will appear in cursive script'}
+                        </p>
                       </div>
 
                       <div className="flex-1 flex items-center justify-center min-h-0">
