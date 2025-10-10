@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Loader2, CheckCircle, AlertCircle, FileText, PenTool, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { X, Loader2, CheckCircle, AlertCircle, FileText, PenTool } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { SignatureCanvas } from './SignatureCanvas';
 
@@ -60,21 +60,23 @@ export function NativeSignatureModal({
 
     setIsTouchDevice(hasTouchScreen);
   }, []);
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState<number>(0);
-  const [pageNumber, setPageNumber] = useState<number>(1);
-  const [scale, setScale] = useState<number>(1.0);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
   const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [pdfComponents, setPdfComponents] = useState<any>(null);
-  const [pageWidth, setPageWidth] = useState<number>(0);
-  const [pageHeight, setPageHeight] = useState<number>(0);
-  const [actualRenderWidth, setActualRenderWidth] = useState<number>(0);
-  const [actualRenderHeight, setActualRenderHeight] = useState<number>(0);
-  const pageContainerRef = React.useRef<HTMLDivElement>(null);
+
+  // Multi-page support - arrays for per-page dimensions
+  const [pageWidths, setPageWidths] = useState<number[]>([]);
+  const [pageHeights, setPageHeights] = useState<number[]>([]);
+  const [loadedPages, setLoadedPages] = useState<Set<number>>(new Set());
+
   const queryClient = useQueryClient();
+
+  const allPagesLoaded = loadedPages.size === numPages && numPages > 0;
 
   // Parse fieldPositions
   const parsedFieldPositions = React.useMemo(() => {
@@ -154,35 +156,14 @@ export function NativeSignatureModal({
     }
   }, [isOpen, pdfUrl]);
 
-  // Measure canvas dimensions
-  useEffect(() => {
-    if (pageContainerRef.current && numPages > 0) {
-      const canvas = pageContainerRef.current.querySelector('canvas');
-      if (canvas) {
-        setTimeout(() => {
-          setActualRenderWidth(canvas.clientWidth);
-          setActualRenderHeight(canvas.clientHeight);
-        }, 100);
-      }
-    }
-  }, [numPages, pageNumber, scale, pageWidth, pageHeight]);
-
   const onDocumentLoadSuccess = (pdf: any) => {
     setNumPages(pdf.numPages);
-    pdf.getPage(1).then((page: any) => {
-      const viewport = page.getViewport({ scale: 1.0 });
-      setPageWidth(viewport.width);
-      setPageHeight(viewport.height);
-    });
   };
 
   const onDocumentLoadError = (error: Error) => {
     console.error('[NativeSignatureModal] PDF load error:', error);
     setError(`PDF rendering error: ${error.message}`);
   };
-
-  // Get fields for current page
-  const currentPageFields = parsedFieldPositions.filter((f: FieldPosition) => f.page === pageNumber);
 
   // Check if all required fields are filled
   const allRequiredFieldsFilled = React.useMemo(() => {
@@ -301,26 +282,30 @@ export function NativeSignatureModal({
     }
   };
 
-  // Convert coordinates from PDF points to screen pixels
-  const convertCoordinates = (field: FieldPosition) => {
+  // Convert coordinates from PDF points to screen pixels (per-page)
+  const convertCoordinates = (field: FieldPosition, pageNum: number) => {
+    const pageIndex = pageNum - 1;
+    const pageWidth = pageWidths[pageIndex];
+    const pageHeight = pageHeights[pageIndex];
+
     if (!pageWidth || !pageHeight) return null;
 
-    // Fields are stored in PDF points - use actual PDF page dimensions for conversion
-    const ourRenderWidth = actualRenderWidth > 0 ? actualRenderWidth : pageWidth * scale;
-    const ourRenderHeight = actualRenderHeight > 0 ? actualRenderHeight : pageHeight * scale;
+    // Fixed render width matches admin
+    const RENDER_WIDTH = 800;
+    const renderHeight = (pageHeight / pageWidth) * RENDER_WIDTH;
 
     // Convert from PDF points to screen pixels using actual PDF dimensions
-    const x = (field.x / pageWidth) * ourRenderWidth;
-    const width = (field.width / pageWidth) * ourRenderWidth;
-    const height = (field.height / pageHeight) * ourRenderHeight;
-    const y = ourRenderHeight - ((field.y / pageHeight) * ourRenderHeight) - height;
+    const x = (field.x / pageWidth) * RENDER_WIDTH;
+    const width = (field.width / pageWidth) * RENDER_WIDTH;
+    const height = (field.height / pageHeight) * renderHeight;
+    const y = renderHeight - ((field.y / pageHeight) * renderHeight) - height;
 
     return { x, y, width, height };
   };
 
-  // Render field overlay
-  const renderFieldOverlay = (field: FieldPosition, index: number) => {
-    const coords = convertCoordinates(field);
+  // Render field overlay for a specific page
+  const renderFieldOverlay = (field: FieldPosition, index: number, pageNum: number) => {
+    const coords = convertCoordinates(field, pageNum);
     if (!coords) return null;
 
     const isFilled = filledFields.has(field.id!);
@@ -372,8 +357,6 @@ export function NativeSignatureModal({
 
   // Fields are already in PDF points from database - pass through with proper structure
   const convertFieldsToPdfCoordinates = (fields: FieldPosition[]): any[] => {
-    if (!pageWidth || !pageHeight) return [];
-
     return fields.map((field) => {
       // Fields are already stored in PDF points - no conversion needed
       return {
@@ -421,8 +404,6 @@ export function NativeSignatureModal({
         assignmentId,
         signatureFieldsCount: pdfSignatureFields.length,
         fields: pdfSignatureFields,
-        pageWidth,
-        pageHeight,
       });
 
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/signatures/sign-native`, {
@@ -500,7 +481,7 @@ export function NativeSignatureModal({
                   <h2 className="text-sm md:text-base font-bold text-gray-900 truncate">{documentTitle}</h2>
                   {numPages > 0 && (
                     <span className="text-xs text-gray-500 whitespace-nowrap hidden sm:inline">
-                      • Page {pageNumber}/{numPages}
+                      • {numPages} {numPages === 1 ? 'page' : 'pages'}
                     </span>
                   )}
                 </div>
@@ -514,61 +495,6 @@ export function NativeSignatureModal({
 
             {/* Right: Controls */}
             <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
-              {/* Zoom Controls */}
-              <div className="flex items-center gap-0.5 md:gap-1 border border-gray-200 rounded-lg px-1 md:px-2 py-1 bg-gray-50">
-                <button
-                  onClick={() => setScale(1.0)}
-                  className="p-1 text-gray-600 hover:text-blue-600 hover:bg-white rounded transition-colors"
-                  title="Fit to width"
-                >
-                  <Maximize2 className="w-3 h-3 md:w-4 md:h-4" />
-                </button>
-                <div className="w-px h-4 bg-gray-300 hidden md:block"></div>
-                <button
-                  onClick={() => setScale(Math.max(0.5, scale - 0.1))}
-                  className="p-1 text-gray-600 hover:text-blue-600 hover:bg-white rounded transition-colors"
-                  title="Zoom out"
-                >
-                  <ZoomOut className="w-3 h-3 md:w-4 md:h-4" />
-                </button>
-                <span className="text-[10px] md:text-xs text-gray-700 font-medium min-w-[35px] md:min-w-[45px] text-center px-1">
-                  {Math.round(scale * 100)}%
-                </span>
-                <button
-                  onClick={() => setScale(Math.min(2.0, scale + 0.1))}
-                  className="p-1 text-gray-600 hover:text-blue-600 hover:bg-white rounded transition-colors"
-                  title="Zoom in"
-                >
-                  <ZoomIn className="w-3 h-3 md:w-4 md:h-4" />
-                </button>
-              </div>
-
-              {/* Page Navigation (multi-page only) */}
-              {numPages > 1 && (
-                <div className="flex items-center gap-1 border border-gray-200 rounded-lg px-1.5 md:px-2 py-1 bg-gray-50">
-                  <button
-                    onClick={() => setPageNumber(Math.max(1, pageNumber - 1))}
-                    disabled={pageNumber <= 1}
-                    className="p-1 text-gray-600 hover:text-blue-600 hover:bg-white rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                    title="Previous page"
-                  >
-                    <svg className="w-3 h-3 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => setPageNumber(Math.min(numPages, pageNumber + 1))}
-                    disabled={pageNumber >= numPages}
-                    className="p-1 text-gray-600 hover:text-blue-600 hover:bg-white rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                    title="Next page"
-                  >
-                    <svg className="w-3 h-3 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                </div>
-              )}
-
               {/* Close Button */}
               <button
                 onClick={handleClose}
@@ -593,9 +519,9 @@ export function NativeSignatureModal({
               </div>
             ) : (
               <>
-                {/* PDF Viewer */}
-                <div className="flex-1 overflow-auto p-2 md:p-6 bg-gray-50 flex items-start justify-center touch-pan-x touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
-                  <div className="bg-white shadow-lg rounded-lg overflow-hidden" style={{ minWidth: 'min-content' }}>
+                {/* PDF Viewer - Multi-page scrollable */}
+                <div className="flex-1 overflow-auto p-2 md:p-6 bg-gray-50 flex items-start justify-center">
+                  <div className="w-full max-w-4xl">
                     {!pdfComponents ? (
                       <div className="flex items-center justify-center p-12">
                         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -607,23 +533,65 @@ export function NativeSignatureModal({
                         <span className="ml-3 text-gray-600">Loading document...</span>
                       </div>
                     ) : pdfBlob ? (
-                      <pdfComponents.Document
-                        file={pdfBlob}
-                        onLoadSuccess={onDocumentLoadSuccess}
-                        onLoadError={onDocumentLoadError}
-                      >
-                        <div ref={pageContainerRef} className="relative inline-block">
-                          <pdfComponents.Page
-                            pageNumber={pageNumber}
-                            width={800}
-                            renderTextLayer={false}
-                            renderAnnotationLayer={false}
-                            className="max-w-full"
-                          />
-                          {/* Field Overlays */}
-                          {currentPageFields.map((field: FieldPosition, index: number) => renderFieldOverlay(field, index))}
-                        </div>
-                      </pdfComponents.Document>
+                      <>
+                        {!allPagesLoaded && (
+                          <div className="flex items-center justify-center py-12">
+                            <div className="text-center">
+                              <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
+                              <p className="text-gray-600">Loading pages... ({loadedPages.size}/{numPages || '?'})</p>
+                            </div>
+                          </div>
+                        )}
+                        <pdfComponents.Document
+                          file={pdfBlob}
+                          onLoadSuccess={onDocumentLoadSuccess}
+                          onLoadError={onDocumentLoadError}
+                          loading=""
+                          className={allPagesLoaded ? '' : 'hidden'}
+                        >
+                          {Array.from({ length: numPages }, (_, i) => i + 1).map(pageNum => (
+                            <div key={pageNum} className="relative mb-4 bg-white shadow-lg rounded-lg">
+                              {/* Page number indicator */}
+                              <div className="absolute top-2 right-2 bg-gray-800 bg-opacity-75 text-white text-xs px-2 py-1 rounded z-20 pointer-events-none">
+                                Page {pageNum} of {numPages}
+                              </div>
+
+                              <pdfComponents.Page
+                                pageNumber={pageNum}
+                                width={800}
+                                renderTextLayer={false}
+                                renderAnnotationLayer={false}
+                                onLoadSuccess={(page: any) => {
+                                  const { width, height } = page;
+                                  setPageWidths(prev => {
+                                    const updated = [...prev];
+                                    updated[pageNum - 1] = width;
+                                    return updated;
+                                  });
+                                  setPageHeights(prev => {
+                                    const updated = [...prev];
+                                    updated[pageNum - 1] = height;
+                                    return updated;
+                                  });
+                                  setLoadedPages(prev => new Set([...prev, pageNum]));
+                                }}
+                                loading=""
+                              />
+
+                              {/* Per-page field overlay */}
+                              <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
+                                <div className="relative w-full h-full pointer-events-auto">
+                                  {parsedFieldPositions
+                                    .filter((field: FieldPosition) => field.page === pageNum)
+                                    .map((field: FieldPosition, index: number) =>
+                                      renderFieldOverlay(field, index, pageNum)
+                                    )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </pdfComponents.Document>
+                      </>
                     ) : (
                       <div className="flex flex-col items-center justify-center p-12">
                         <AlertCircle className="w-12 h-12 text-red-500 mb-3" />
@@ -764,152 +732,16 @@ export function NativeSignatureModal({
                         </p>
                       </div>
 
-                      {/* Secure Signature Area with Security Elements */}
-                      <div className="flex-shrink-0 relative">
-                        {/* Fine-line background pattern */}
-                        <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-20" style={{ zIndex: 0 }}>
-                          <defs>
-                            <pattern id="securityGrid" width="10" height="10" patternUnits="userSpaceOnUse">
-                              <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#3b82f6" strokeWidth="0.5"/>
-                            </pattern>
-                          </defs>
-                          <rect width="100%" height="100%" fill="url(#securityGrid)" />
-                        </svg>
-
-                        {/* Guilloché border */}
-                        <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 2 }}>
-                          <defs>
-                            {/* Horizontal Guilloché pattern */}
-                            <pattern id="guillocheH" width="40" height="10" patternUnits="userSpaceOnUse">
-                              <path d="M0,5 Q10,0 20,5 T40,5" stroke="#3b82f6" fill="none" strokeWidth="1" opacity="0.8"/>
-                              <path d="M0,5 Q10,10 20,5 T40,5" stroke="#6366f1" fill="none" strokeWidth="1" opacity="0.8"/>
-                            </pattern>
-                            {/* Vertical Guilloché pattern */}
-                            <pattern id="guillocheV" width="10" height="40" patternUnits="userSpaceOnUse">
-                              <path d="M5,0 Q0,10 5,20 T5,40" stroke="#3b82f6" fill="none" strokeWidth="1" opacity="0.8"/>
-                              <path d="M5,0 Q10,10 5,20 T5,40" stroke="#6366f1" fill="none" strokeWidth="1" opacity="0.8"/>
-                            </pattern>
-                          </defs>
-                          {/* Top border */}
-                          <rect x="0" y="0" width="100%" height="12" fill="url(#guillocheH)" />
-                          {/* Bottom border */}
-                          <rect x="0" y="calc(100% - 12px)" width="100%" height="12" fill="url(#guillocheH)" />
-                          {/* Left border */}
-                          <rect x="0" y="0" width="12" height="100%" fill="url(#guillocheV)" />
-                          {/* Right border */}
-                          <rect x="calc(100% - 12px)" y="0" width="12" height="100%" fill="url(#guillocheV)" />
-                        </svg>
-
-                        {/* Microtext bands */}
-                        <div className="absolute top-0 left-0 right-0 h-3 overflow-hidden pointer-events-none flex items-center" style={{ zIndex: 3 }}>
-                          <div className="text-[5px] text-blue-600 opacity-70 whitespace-nowrap font-mono" style={{ letterSpacing: '0.5px' }}>
-                            SECURE•ELECTRONIC•SIGNATURE•ESIGN•ACT•COMPLIANT•ENCRYPTED•HARTZELL•HR•SECURE•ELECTRONIC•SIGNATURE•ESIGN•ACT•COMPLIANT•ENCRYPTED•HARTZELL•HR•SECURE•ELECTRONIC•SIGNATURE•ESIGN•ACT•COMPLIANT•ENCRYPTED•HARTZELL•HR•
-                          </div>
-                        </div>
-                        <div className="absolute bottom-0 left-0 right-0 h-3 overflow-hidden pointer-events-none flex items-center" style={{ zIndex: 3 }}>
-                          <div className="text-[5px] text-blue-600 opacity-70 whitespace-nowrap font-mono" style={{ letterSpacing: '0.5px' }}>
-                            SECURE•ELECTRONIC•SIGNATURE•ESIGN•ACT•COMPLIANT•ENCRYPTED•HARTZELL•HR•SECURE•ELECTRONIC•SIGNATURE•ESIGN•ACT•COMPLIANT•ENCRYPTED•HARTZELL•HR•SECURE•ELECTRONIC•SIGNATURE•ESIGN•ACT•COMPLIANT•ENCRYPTED•HARTZELL•HR•
-                          </div>
-                        </div>
-
-                        {/* Rosette seal - top left */}
-                        <svg className="absolute top-2 left-2 w-10 h-10 pointer-events-none" style={{ zIndex: 4 }}>
-                          <defs>
-                            <radialGradient id="rosetteGradientTL">
-                              <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.9"/>
-                              <stop offset="100%" stopColor="#6366f1" stopOpacity="0.5"/>
-                            </radialGradient>
-                          </defs>
-                          {/* Outer rings */}
-                          <circle cx="20" cy="20" r="18" fill="none" stroke="url(#rosetteGradientTL)" strokeWidth="1.5"/>
-                          <circle cx="20" cy="20" r="15" fill="none" stroke="url(#rosetteGradientTL)" strokeWidth="1"/>
-                          {/* Radiating lines */}
-                          {[...Array(16)].map((_, i) => {
-                            const angle = (i * 22.5) * Math.PI / 180;
-                            const x1 = 20 + Math.cos(angle) * 6;
-                            const y1 = 20 + Math.sin(angle) * 6;
-                            const x2 = 20 + Math.cos(angle) * 13;
-                            const y2 = 20 + Math.sin(angle) * 13;
-                            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="url(#rosetteGradientTL)" strokeWidth="1" />;
-                          })}
-                          <circle cx="20" cy="20" r="5" fill="url(#rosetteGradientTL)"/>
-                        </svg>
-
-                        {/* Rosette seal - bottom right */}
-                        <svg className="absolute bottom-2 right-2 w-10 h-10 pointer-events-none" style={{ zIndex: 4 }}>
-                          <defs>
-                            <radialGradient id="rosetteGradientBR">
-                              <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.9"/>
-                              <stop offset="100%" stopColor="#6366f1" stopOpacity="0.5"/>
-                            </radialGradient>
-                          </defs>
-                          {/* Outer rings */}
-                          <circle cx="20" cy="20" r="18" fill="none" stroke="url(#rosetteGradientBR)" strokeWidth="1.5"/>
-                          <circle cx="20" cy="20" r="15" fill="none" stroke="url(#rosetteGradientBR)" strokeWidth="1"/>
-                          {/* Radiating lines */}
-                          {[...Array(16)].map((_, i) => {
-                            const angle = (i * 22.5) * Math.PI / 180;
-                            const x1 = 20 + Math.cos(angle) * 6;
-                            const y1 = 20 + Math.sin(angle) * 6;
-                            const x2 = 20 + Math.cos(angle) * 13;
-                            const y2 = 20 + Math.sin(angle) * 13;
-                            return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="url(#rosetteGradientBR)" strokeWidth="1" />;
-                          })}
-                          <circle cx="20" cy="20" r="5" fill="url(#rosetteGradientBR)"/>
-                        </svg>
-
-                        {/* Micro QR code - top right */}
-                        <svg className="absolute top-2 right-2 w-10 h-10 pointer-events-none opacity-70" style={{ zIndex: 4 }}>
-                          {/* QR-style pattern */}
-                          <rect x="0" y="0" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="2.5" y="0" width="2.5" height="2.5" fill="transparent"/>
-                          <rect x="5" y="0" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="7.5" y="0" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="0" y="2.5" width="2.5" height="2.5" fill="transparent"/>
-                          <rect x="2.5" y="2.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="5" y="2.5" width="2.5" height="2.5" fill="transparent"/>
-                          <rect x="7.5" y="2.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="0" y="5" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="2.5" y="5" width="2.5" height="2.5" fill="transparent"/>
-                          <rect x="5" y="5" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="7.5" y="5" width="2.5" height="2.5" fill="transparent"/>
-                          <rect x="0" y="7.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="2.5" y="7.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="5" y="7.5" width="2.5" height="2.5" fill="transparent"/>
-                          <rect x="7.5" y="7.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                        </svg>
-
-                        {/* Micro QR code - bottom left */}
-                        <svg className="absolute bottom-2 left-2 w-10 h-10 pointer-events-none opacity-70" style={{ zIndex: 4 }}>
-                          <rect x="0" y="0" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="2.5" y="0" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="5" y="0" width="2.5" height="2.5" fill="transparent"/>
-                          <rect x="7.5" y="0" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="0" y="2.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="2.5" y="2.5" width="2.5" height="2.5" fill="transparent"/>
-                          <rect x="5" y="2.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="7.5" y="2.5" width="2.5" height="2.5" fill="transparent"/>
-                          <rect x="0" y="5" width="2.5" height="2.5" fill="transparent"/>
-                          <rect x="2.5" y="5" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="5" y="5" width="2.5" height="2.5" fill="transparent"/>
-                          <rect x="7.5" y="5" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="0" y="7.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="2.5" y="7.5" width="2.5" height="2.5" fill="transparent"/>
-                          <rect x="5" y="7.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                          <rect x="7.5" y="7.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                        </svg>
-
-                        {/* Signature Canvas */}
-                        <div className="relative" style={{ zIndex: 1 }}>
-                          <SignatureCanvas
-                            onSave={handleSaveSignature}
-                            onClear={() => setTempSignature(null)}
-                            width={activeField.type === 'initials' ? 300 : 500}
-                            height={activeField.type === 'initials' ? 150 : 200}
-                            showButtons={false}
-                            autoSaveOnDraw={true}
-                          />
-                        </div>
+                      {/* Signature Canvas */}
+                      <div className="relative flex-shrink-0">
+                        <SignatureCanvas
+                          onSave={handleSaveSignature}
+                          onClear={() => setTempSignature(null)}
+                          width={activeField.type === 'initials' ? 300 : 500}
+                          height={activeField.type === 'initials' ? 150 : 200}
+                          showButtons={false}
+                          autoSaveOnDraw={true}
+                        />
                       </div>
                     </>
                   ) : (
@@ -934,143 +766,9 @@ export function NativeSignatureModal({
                       </div>
 
                       <div className="flex-1 flex items-center justify-center min-h-0">
-                        {/* Secure Signature Preview Area with Security Elements */}
+                        {/* Signature Preview Area */}
                         <div className="relative w-full" style={{ height: '200px' }}>
-                          {/* Fine-line background pattern */}
-                          <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-20" style={{ zIndex: 0 }}>
-                            <defs>
-                              <pattern id="securityGridType" width="10" height="10" patternUnits="userSpaceOnUse">
-                                <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#3b82f6" strokeWidth="0.5"/>
-                              </pattern>
-                            </defs>
-                            <rect width="100%" height="100%" fill="url(#securityGridType)" />
-                          </svg>
-
-                          {/* Guilloché border */}
-                          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 2 }}>
-                            <defs>
-                              {/* Horizontal Guilloché pattern */}
-                              <pattern id="guillocheTypeH" width="40" height="10" patternUnits="userSpaceOnUse">
-                                <path d="M0,5 Q10,0 20,5 T40,5" stroke="#3b82f6" fill="none" strokeWidth="1" opacity="0.8"/>
-                                <path d="M0,5 Q10,10 20,5 T40,5" stroke="#6366f1" fill="none" strokeWidth="1" opacity="0.8"/>
-                              </pattern>
-                              {/* Vertical Guilloché pattern */}
-                              <pattern id="guillocheTypeV" width="10" height="40" patternUnits="userSpaceOnUse">
-                                <path d="M5,0 Q0,10 5,20 T5,40" stroke="#3b82f6" fill="none" strokeWidth="1" opacity="0.8"/>
-                                <path d="M5,0 Q10,10 5,20 T5,40" stroke="#6366f1" fill="none" strokeWidth="1" opacity="0.8"/>
-                              </pattern>
-                            </defs>
-                            {/* Top border */}
-                            <rect x="0" y="0" width="100%" height="12" fill="url(#guillocheTypeH)" />
-                            {/* Bottom border */}
-                            <rect x="0" y="calc(100% - 12px)" width="100%" height="12" fill="url(#guillocheTypeH)" />
-                            {/* Left border */}
-                            <rect x="0" y="0" width="12" height="100%" fill="url(#guillocheTypeV)" />
-                            {/* Right border */}
-                            <rect x="calc(100% - 12px)" y="0" width="12" height="100%" fill="url(#guillocheTypeV)" />
-                          </svg>
-
-                          {/* Microtext bands */}
-                          <div className="absolute top-0 left-0 right-0 h-3 overflow-hidden pointer-events-none flex items-center" style={{ zIndex: 3 }}>
-                            <div className="text-[5px] text-blue-600 opacity-70 whitespace-nowrap font-mono" style={{ letterSpacing: '0.5px' }}>
-                              SECURE•ELECTRONIC•SIGNATURE•ESIGN•ACT•COMPLIANT•ENCRYPTED•HARTZELL•HR•SECURE•ELECTRONIC•SIGNATURE•ESIGN•ACT•COMPLIANT•ENCRYPTED•HARTZELL•HR•SECURE•ELECTRONIC•SIGNATURE•ESIGN•ACT•COMPLIANT•ENCRYPTED•HARTZELL•HR•
-                            </div>
-                          </div>
-                          <div className="absolute bottom-0 left-0 right-0 h-3 overflow-hidden pointer-events-none flex items-center" style={{ zIndex: 3 }}>
-                            <div className="text-[5px] text-blue-600 opacity-70 whitespace-nowrap font-mono" style={{ letterSpacing: '0.5px' }}>
-                              SECURE•ELECTRONIC•SIGNATURE•ESIGN•ACT•COMPLIANT•ENCRYPTED•HARTZELL•HR•SECURE•ELECTRONIC•SIGNATURE•ESIGN•ACT•COMPLIANT•ENCRYPTED•HARTZELL•HR•SECURE•ELECTRONIC•SIGNATURE•ESIGN•ACT•COMPLIANT•ENCRYPTED•HARTZELL•HR•
-                            </div>
-                          </div>
-
-                          {/* Rosette seal - top left */}
-                          <svg className="absolute top-2 left-2 w-10 h-10 pointer-events-none" style={{ zIndex: 4 }}>
-                            <defs>
-                              <radialGradient id="rosetteGradientTypeTL">
-                                <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.9"/>
-                                <stop offset="100%" stopColor="#6366f1" stopOpacity="0.5"/>
-                              </radialGradient>
-                            </defs>
-                            {/* Outer rings */}
-                            <circle cx="20" cy="20" r="18" fill="none" stroke="url(#rosetteGradientTypeTL)" strokeWidth="1.5"/>
-                            <circle cx="20" cy="20" r="15" fill="none" stroke="url(#rosetteGradientTypeTL)" strokeWidth="1"/>
-                            {/* Radiating lines */}
-                            {[...Array(16)].map((_, i) => {
-                              const angle = (i * 22.5) * Math.PI / 180;
-                              const x1 = 20 + Math.cos(angle) * 6;
-                              const y1 = 20 + Math.sin(angle) * 6;
-                              const x2 = 20 + Math.cos(angle) * 13;
-                              const y2 = 20 + Math.sin(angle) * 13;
-                              return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="url(#rosetteGradientTypeTL)" strokeWidth="1" />;
-                            })}
-                            <circle cx="20" cy="20" r="5" fill="url(#rosetteGradientTypeTL)"/>
-                          </svg>
-
-                          {/* Rosette seal - bottom right */}
-                          <svg className="absolute bottom-2 right-2 w-10 h-10 pointer-events-none" style={{ zIndex: 4 }}>
-                            <defs>
-                              <radialGradient id="rosetteGradientTypeBR">
-                                <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.9"/>
-                                <stop offset="100%" stopColor="#6366f1" stopOpacity="0.5"/>
-                              </radialGradient>
-                            </defs>
-                            {/* Outer rings */}
-                            <circle cx="20" cy="20" r="18" fill="none" stroke="url(#rosetteGradientTypeBR)" strokeWidth="1.5"/>
-                            <circle cx="20" cy="20" r="15" fill="none" stroke="url(#rosetteGradientTypeBR)" strokeWidth="1"/>
-                            {/* Radiating lines */}
-                            {[...Array(16)].map((_, i) => {
-                              const angle = (i * 22.5) * Math.PI / 180;
-                              const x1 = 20 + Math.cos(angle) * 6;
-                              const y1 = 20 + Math.sin(angle) * 6;
-                              const x2 = 20 + Math.cos(angle) * 13;
-                              const y2 = 20 + Math.sin(angle) * 13;
-                              return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="url(#rosetteGradientTypeBR)" strokeWidth="1" />;
-                            })}
-                            <circle cx="20" cy="20" r="5" fill="url(#rosetteGradientTypeBR)"/>
-                          </svg>
-
-                          {/* Micro QR code - top right */}
-                          <svg className="absolute top-2 right-2 w-10 h-10 pointer-events-none opacity-70" style={{ zIndex: 4 }}>
-                            {/* QR-style pattern */}
-                            <rect x="0" y="0" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="2.5" y="0" width="2.5" height="2.5" fill="transparent"/>
-                            <rect x="5" y="0" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="7.5" y="0" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="0" y="2.5" width="2.5" height="2.5" fill="transparent"/>
-                            <rect x="2.5" y="2.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="5" y="2.5" width="2.5" height="2.5" fill="transparent"/>
-                            <rect x="7.5" y="2.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="0" y="5" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="2.5" y="5" width="2.5" height="2.5" fill="transparent"/>
-                            <rect x="5" y="5" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="7.5" y="5" width="2.5" height="2.5" fill="transparent"/>
-                            <rect x="0" y="7.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="2.5" y="7.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="5" y="7.5" width="2.5" height="2.5" fill="transparent"/>
-                            <rect x="7.5" y="7.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                          </svg>
-
-                          {/* Micro QR code - bottom left */}
-                          <svg className="absolute bottom-2 left-2 w-10 h-10 pointer-events-none opacity-70" style={{ zIndex: 4 }}>
-                            <rect x="0" y="0" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="2.5" y="0" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="5" y="0" width="2.5" height="2.5" fill="transparent"/>
-                            <rect x="7.5" y="0" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="0" y="2.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="2.5" y="2.5" width="2.5" height="2.5" fill="transparent"/>
-                            <rect x="5" y="2.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="7.5" y="2.5" width="2.5" height="2.5" fill="transparent"/>
-                            <rect x="0" y="5" width="2.5" height="2.5" fill="transparent"/>
-                            <rect x="2.5" y="5" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="5" y="5" width="2.5" height="2.5" fill="transparent"/>
-                            <rect x="7.5" y="5" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="0" y="7.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="2.5" y="7.5" width="2.5" height="2.5" fill="transparent"/>
-                            <rect x="5" y="7.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                            <rect x="7.5" y="7.5" width="2.5" height="2.5" fill="#3b82f6"/>
-                          </svg>
-
-                          {/* Content */}
-                          <div className="relative h-full" style={{ zIndex: 1 }}>
+                          <div className="relative h-full">
                             {typedName ? (
                               <div className="border-2 border-gray-300 rounded-lg bg-white p-4 w-full h-full flex items-center justify-center">
                                 <p style={{ fontFamily: '"Dancing Script", cursive', fontSize: '48px', color: '#000', lineHeight: '1' }}>
