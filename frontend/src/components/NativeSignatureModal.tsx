@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { SignatureCanvas } from './SignatureCanvas';
 import { SecureSignatureBox } from './SecureSignatureBox';
 import { SecureSignatureFrame } from './SecureSignatureFrame';
+import { LoadingAnimation } from './LoadingAnimation';
 
 interface FieldPosition {
   type: 'signature' | 'initials' | 'date' | 'checkbox' | 'text';
@@ -34,6 +35,7 @@ interface NativeSignatureModalProps {
   pdfUrl: string;
   fieldPositions?: FieldPosition[] | string;
   onSuccess?: () => void;
+  onDocumentReady?: () => void;
 }
 
 export function NativeSignatureModal({
@@ -44,6 +46,7 @@ export function NativeSignatureModal({
   pdfUrl,
   fieldPositions = [],
   onSuccess,
+  onDocumentReady,
 }: NativeSignatureModalProps) {
   const [filledFields, setFilledFields] = useState<Map<string, FilledField>>(new Map());
   const [activeField, setActiveField] = useState<FieldPosition | null>(null);
@@ -52,6 +55,7 @@ export function NativeSignatureModal({
   const [signatureMethod, setSignatureMethod] = useState<'draw' | 'type'>('draw');
   const [typedName, setTypedName] = useState<string>('');
   const [isTouchDevice, setIsTouchDevice] = useState<boolean>(false);
+  const [currentSerialNumber, setCurrentSerialNumber] = useState<string>('');
 
   // Detect if device supports touch
   useEffect(() => {
@@ -65,6 +69,7 @@ export function NativeSignatureModal({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [showLoadingAnimation, setShowLoadingAnimation] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [numPages, setNumPages] = useState<number>(0);
   const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
@@ -76,6 +81,8 @@ export function NativeSignatureModal({
   const [pageHeights, setPageHeights] = useState<number[]>([]);
   const [loadedPages, setLoadedPages] = useState<Set<number>>(new Set());
   const [convertedFields, setConvertedFields] = useState<FieldPosition[]>([]);
+  const [pdfRenderWidth, setPdfRenderWidth] = useState<number>(800);
+  const pdfContainerRef = React.useRef<HTMLDivElement>(null);
 
   const queryClient = useQueryClient();
 
@@ -155,6 +162,13 @@ export function NativeSignatureModal({
     }
   }, [parsedFieldPositions, allPagesLoaded, pageWidths, pageHeights]);
 
+  // Notify parent when document is fully loaded
+  useEffect(() => {
+    if (allPagesLoaded && onDocumentReady) {
+      onDocumentReady();
+    }
+  }, [allPagesLoaded, onDocumentReady]);
+
   // Lock body scroll when modal is open
   useEffect(() => {
     if (isOpen) {
@@ -174,6 +188,24 @@ export function NativeSignatureModal({
         window.scrollTo(0, scrollY);
       };
     }
+  }, [isOpen]);
+
+  // Calculate responsive PDF width
+  useEffect(() => {
+    const updatePdfWidth = () => {
+      if (pdfContainerRef.current) {
+        const containerWidth = pdfContainerRef.current.offsetWidth;
+        // Set PDF width to container width, clamped between 400px and 1200px
+        const optimalWidth = Math.max(400, Math.min(containerWidth - 40, 1200));
+        setPdfRenderWidth(optimalWidth);
+      }
+    };
+
+    // Update on mount and window resize
+    updatePdfWidth();
+    window.addEventListener('resize', updatePdfWidth);
+
+    return () => window.removeEventListener('resize', updatePdfWidth);
   }, [isOpen]);
 
   // Dynamically import react-pdf
@@ -231,7 +263,7 @@ export function NativeSignatureModal({
     return requiredFields.every((f: FieldPosition) => filledFields.has(f.id!));
   }, [convertedFields, filledFields]);
 
-  // Generate signature from typed name
+  // Generate signature from typed name with dynamic sizing
   const generateTypedSignature = (name: string, isInitials: boolean = false): string => {
     const canvas = document.createElement('canvas');
     canvas.width = isInitials ? 300 : 500;
@@ -240,18 +272,30 @@ export function NativeSignatureModal({
 
     if (!ctx) return '';
 
-    // Fill with white background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Transparent background (no white fill)
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Set cursive font - smaller for initials
-    const fontSize = isInitials ? 48 : 64;
-    ctx.font = `${fontSize}px "Dancing Script", cursive`;
+    // Dynamic font sizing to fit text
+    let fontSize = isInitials ? 48 : 64;
+    const minFontSize = isInitials ? 24 : 32;
+    const maxWidth = canvas.width * 0.9; // 90% of canvas width for padding
+
     ctx.fillStyle = '#000000';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Draw the name
+    // Find the right font size that fits
+    while (fontSize > minFontSize) {
+      ctx.font = `${fontSize}px "Dancing Script", cursive`;
+      const metrics = ctx.measureText(name);
+      if (metrics.width <= maxWidth) {
+        break; // Text fits!
+      }
+      fontSize -= 2; // Reduce font size and try again
+    }
+
+    // Draw the name with the calculated font size
+    ctx.font = `${fontSize}px "Dancing Script", cursive`;
     ctx.fillText(name, canvas.width / 2, canvas.height / 2);
 
     return canvas.toDataURL('image/png');
@@ -282,6 +326,10 @@ export function NativeSignatureModal({
     setSignatureMethod(isTouchDevice ? 'draw' : 'type');
 
     if (field.type === 'signature' || field.type === 'initials') {
+      // Generate unique serial number ONCE when popup opens
+      const timestamp = Date.now();
+      const serialNumber = `HSC-${timestamp.toString(36).toUpperCase()}-${assignmentId.toString().padStart(4, '0')}`;
+      setCurrentSerialNumber(serialNumber);
       setShowSignaturePopup(true);
     } else if (field.type === 'date') {
       // Auto-fill with current date
@@ -381,6 +429,7 @@ export function NativeSignatureModal({
           top: `${field.y}%`,
           width: `${field.width}%`,
           height: `${field.height}%`,
+          pointerEvents: 'auto',
         }}
         onClick={() => handleFieldClick(field)}
         title={`Click to ${isFilled ? 'edit' : 'fill'} ${field.label}`}
@@ -433,6 +482,7 @@ export function NativeSignatureModal({
     }
 
     setIsSubmitting(true);
+    setShowLoadingAnimation(true);
     setError(null);
 
     try {
@@ -494,6 +544,7 @@ export function NativeSignatureModal({
     } catch (err) {
       console.error('Error signing document:', err);
       setError(err instanceof Error ? err.message : 'Failed to sign document');
+      setShowLoadingAnimation(false);
     } finally {
       setIsSubmitting(false);
     }
@@ -510,6 +561,15 @@ export function NativeSignatureModal({
   if (!isOpen) return null;
 
   return (
+    <>
+      {/* Loading Animation */}
+      {showLoadingAnimation && (
+        <LoadingAnimation
+          onComplete={() => setShowLoadingAnimation(false)}
+          duration={2250}
+        />
+      )}
+
     <div className="fixed inset-0 z-50 overflow-hidden" style={{ touchAction: 'none' }}>
       {/* Backdrop */}
       <div
@@ -577,7 +637,7 @@ export function NativeSignatureModal({
               <>
                 {/* PDF Viewer - Multi-page scrollable */}
                 <div className="flex-1 overflow-auto p-2 md:p-6 bg-gray-50 flex items-start justify-center">
-                  <div className="w-full max-w-4xl">
+                  <div ref={pdfContainerRef} className="w-full max-w-4xl">
                     {!pdfComponents ? (
                       <div className="flex items-center justify-center p-12">
                         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
@@ -614,7 +674,7 @@ export function NativeSignatureModal({
 
                               <pdfComponents.Page
                                 pageNumber={pageNum}
-                                width={800}
+                                width={pdfRenderWidth}
                                 renderTextLayer={false}
                                 renderAnnotationLayer={false}
                                 onLoadSuccess={(page: any) => {
@@ -634,10 +694,14 @@ export function NativeSignatureModal({
                                 loading=""
                               />
 
-                              {/* Per-page field overlay - EXACT same structure as admin */}
+                              {/* Per-page field overlay - LOCKED to exact PDF dimensions */}
                               <div
-                                className="absolute top-0 left-0 w-full h-full rounded-lg"
-                                style={{ height: pageHeights[pageNum - 1] || 'auto' }}
+                                className="absolute top-0 left-0 rounded-lg"
+                                style={{
+                                  width: `${pdfRenderWidth}px`,
+                                  height: pageWidths[pageNum - 1] ? `${(pdfRenderWidth / pageWidths[pageNum - 1]) * pageHeights[pageNum - 1]}px` : 'auto',
+                                  pointerEvents: 'none'
+                                }}
                               >
                                 {convertedFields
                                   .filter((field: FieldPosition) => field.page === pageNum)
@@ -698,17 +762,8 @@ export function NativeSignatureModal({
       </div>
 
       {/* Signature Popup Modal */}
-      {showSignaturePopup && activeField && (() => {
-        // Generate unique serial number for this signature
-        const timestamp = Date.now();
-        const serialNumber = `HSC-${timestamp.toString(36).toUpperCase()}-${assignmentId.toString().padStart(4, '0')}`;
-
-        return (
-          <>
-            {/* Load Dancing Script font */}
-            <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap" rel="stylesheet" />
-
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 md:p-4" style={{ background: 'rgba(0,0,0,0.6)', touchAction: 'none' }}>
+      {showSignaturePopup && activeField && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 md:p-4" style={{ background: 'rgba(0,0,0,0.6)', touchAction: 'none' }}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col" style={{ touchAction: 'auto' }}>
               {/* Header */}
               <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 md:px-6 py-3 md:py-4">
@@ -794,25 +849,33 @@ export function NativeSignatureModal({
                         </p>
                       </div>
 
-                      {/* Signature Canvas with Security Features - Always visible background */}
-                      <div className="relative flex-shrink-0 mx-auto" style={{ width: activeField.type === 'initials' ? 300 : 500, height: activeField.type === 'initials' ? 150 : 200 }}>
-                        {/* Security frame - always visible as background */}
-                        <SecureSignatureFrame
-                          width={activeField.type === 'initials' ? 300 : 500}
-                          height={activeField.type === 'initials' ? 150 : 200}
-                          serialNumber={serialNumber}
-                        />
-
-                        {/* Canvas overlay for drawing */}
-                        <div className="absolute inset-0 signature-canvas-enterprise">
-                          <SignatureCanvas
-                            onSave={handleSaveSignature}
-                            onClear={() => setTempSignature(null)}
-                            width={activeField.type === 'initials' ? 300 : 500}
+                      {/* Signature box container */}
+                      <div className="flex items-center justify-center w-full">
+                        <div
+                          style={{
+                            width: activeField.type === 'initials' ? '300px' : '400px',
+                            maxWidth: '100%',
+                            height: activeField.type === 'initials' ? 150 : 200,
+                            position: 'relative',
+                            margin: '0 auto'
+                          }}
+                        >
+                          <SecureSignatureFrame
+                            width={activeField.type === 'initials' ? 300 : 400}
                             height={activeField.type === 'initials' ? 150 : 200}
-                            showButtons={false}
-                            autoSaveOnDraw={true}
+                            serialNumber={currentSerialNumber}
                           />
+
+                          <div className="absolute inset-0 signature-canvas-enterprise">
+                            <SignatureCanvas
+                              onSave={handleSaveSignature}
+                              onClear={() => setTempSignature(null)}
+                              width={activeField.type === 'initials' ? 300 : 400}
+                              height={activeField.type === 'initials' ? 150 : 200}
+                              showButtons={false}
+                              autoSaveOnDraw={true}
+                            />
+                          </div>
                         </div>
                       </div>
                     </>
@@ -838,24 +901,27 @@ export function NativeSignatureModal({
                       </div>
 
                       <div className="flex-1 flex items-center justify-center min-h-0">
-                        {/* Signature Preview Area with Security Features - Always visible background */}
-                        <div className="relative w-full flex items-center justify-center" style={{ height: '200px' }}>
-                          <div className="relative" style={{ width: activeField.type === 'initials' ? 300 : 500, height: activeField.type === 'initials' ? 150 : 200 }}>
-                            {/* Security frame - always visible as background */}
-                            <SecureSignatureFrame
-                              width={activeField.type === 'initials' ? 300 : 500}
-                              height={activeField.type === 'initials' ? 150 : 200}
-                              serialNumber={serialNumber}
-                            />
+                        <div
+                          style={{
+                            width: activeField.type === 'initials' ? '300px' : '400px',
+                            maxWidth: '100%',
+                            height: activeField.type === 'initials' ? 150 : 200,
+                            position: 'relative',
+                            margin: '0 auto'
+                          }}
+                        >
+                          <SecureSignatureFrame
+                            width={activeField.type === 'initials' ? 300 : 400}
+                            height={activeField.type === 'initials' ? 150 : 200}
+                            serialNumber={currentSerialNumber}
+                          />
 
-                            {/* Typed signature preview overlay */}
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                              {tempSignature ? (
-                                <img src={tempSignature} alt="Signature preview" className="max-w-full max-h-full object-contain" />
-                              ) : (
-                                <span className="text-gray-300 text-xs">Awaiting signature...</span>
-                              )}
-                            </div>
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            {tempSignature ? (
+                              <img src={tempSignature} alt="Signature preview" className="max-w-full max-h-full object-contain" />
+                            ) : (
+                              <span className="text-gray-300 text-xs">Awaiting signature...</span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -912,9 +978,8 @@ export function NativeSignatureModal({
               </div>
             </div>
           </div>
-        </>
-        );
-      })()}
+      )}
     </div>
+    </>
   );
 }

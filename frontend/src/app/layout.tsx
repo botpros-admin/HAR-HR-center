@@ -23,6 +23,20 @@ export default function RootLayout({
           async
           defer
         ></script>
+        {/* Preload Dancing Script font for signatures */}
+        <link
+          rel="preconnect"
+          href="https://fonts.googleapis.com"
+        />
+        <link
+          rel="preconnect"
+          href="https://fonts.gstatic.com"
+          crossOrigin="anonymous"
+        />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap"
+          rel="stylesheet"
+        />
       </head>
       <body className={inter.className}>
         <Providers>{children}</Providers>

@@ -174,8 +174,17 @@ class ApiClient {
   async uploadTemplate(formData: FormData): Promise<{ success: boolean; template: any }> {
     // For file uploads, don't set Content-Type header (browser will set it with boundary)
     const url = `${this.baseUrl}/admin/templates`;
+
+    const headers: Record<string, string> = {};
+
+    // Add CSRF token for POST request
+    if (this.csrfToken) {
+      headers['X-CSRF-Token'] = this.csrfToken;
+    }
+
     const response = await fetch(url, {
       method: 'POST',
+      headers,
       body: formData,
       credentials: 'include',
     });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { FileText, Download, Eye, PenTool, Search, CheckCircle, AlertTriangle, Clock, XCircle } from 'lucide-react';
@@ -8,12 +8,16 @@ import { formatDate } from '@/lib/utils';
 import { Toast, ToastContainer } from '@/components/Toast';
 import { NativeSignatureModal } from '@/components/NativeSignatureModal';
 import { DocumentViewerModal } from '@/components/DocumentViewerModal';
+import { LoadingAnimation } from '@/components/LoadingAnimation';
 
 type FilterType = 'all' | 'needs-attention' | 'onboarding' | 'tax' | 'benefits' | 'policy' | 'other';
 
 export default function DocumentsPage() {
   const [filter, setFilter] = useState<FilterType>('needs-attention');
   const [searchTerm, setSearchTerm] = useState('');
+  const [showLoadingAnimation, setShowLoadingAnimation] = useState(false);
+  const [documentReady, setDocumentReady] = useState(false);
+  const [minDurationPassed, setMinDurationPassed] = useState(false);
   const [toasts, setToasts] = useState<Array<{ id: number; message: string; type: 'success' | 'error' | 'warning' | 'info' }>>([]);
   const [signatureModal, setSignatureModal] = useState<{
     isOpen: boolean;
@@ -26,6 +30,16 @@ export default function DocumentsPage() {
     isOpen: boolean;
     document: any;
   } | null>(null);
+
+  // Hide animation when both minimum duration has passed AND document is ready
+  useEffect(() => {
+    if (minDurationPassed && documentReady) {
+      setShowLoadingAnimation(false);
+      // Reset states for next time
+      setMinDurationPassed(false);
+      setDocumentReady(false);
+    }
+  }, [minDurationPassed, documentReady]);
 
   const { data: documents, isLoading } = useQuery({
     queryKey: ['documents'],
@@ -101,16 +115,34 @@ export default function DocumentsPage() {
   };
 
   const handleSign = (signatureUrl: string | null, documentTitle: string, assignmentId: number, fieldPositions?: any[]) => {
+    // Reset states
+    setDocumentReady(false);
+    setMinDurationPassed(false);
+
+    // Show loading animation
+    setShowLoadingAnimation(true);
+
+    // Start minimum duration timer (2250ms)
+    setTimeout(() => {
+      setMinDurationPassed(true);
+    }, 2250);
+
     // Construct PDF URL for preview
     const pdfUrl = `${process.env.NEXT_PUBLIC_API_URL}/employee/documents/download/${assignmentId}`;
 
+    // Open modal immediately (it will be behind the animation)
     setSignatureModal({
       isOpen: true,
-      signatureUrl: pdfUrl, // Use download endpoint for PDF preview
+      signatureUrl: pdfUrl,
       documentTitle,
       assignmentId,
       fieldPositions,
     });
+  };
+
+  const handleDocumentReady = () => {
+    // Called by NativeSignatureModal when document is fully loaded
+    setDocumentReady(true);
   };
 
   const closeSignatureModal = () => {
@@ -162,6 +194,14 @@ export default function DocumentsPage() {
   }
 
   return (
+    <>
+      {/* Loading Animation - Modal Mode */}
+      {showLoadingAnimation && (
+        <LoadingAnimation
+          modalMode={true}
+        />
+      )}
+
     <div className="space-y-6">
       <ToastContainer>
         {toasts.map(toast => (
@@ -184,6 +224,7 @@ export default function DocumentsPage() {
           assignmentId={signatureModal.assignmentId}
           fieldPositions={signatureModal.fieldPositions}
           onSuccess={handleSignatureSuccess}
+          onDocumentReady={handleDocumentReady}
         />
       )}
 
@@ -364,6 +405,7 @@ export default function DocumentsPage() {
         </div>
       )}
     </div>
+    </>
   );
 }
 
