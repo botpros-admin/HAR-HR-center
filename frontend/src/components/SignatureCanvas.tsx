@@ -34,13 +34,12 @@ export function SignatureCanvas({
 
     // Set up canvas context
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // Fill with white background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Transparent background to show security features underneath
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Add native touch event listeners with { passive: false } to allow preventDefault
     const handleTouchStart = (e: TouchEvent) => {
@@ -141,13 +140,12 @@ export function SignatureCanvas({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear and fill with white
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Clear canvas to transparent
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     // Reset stroke style
     ctx.strokeStyle = '#000000';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5;
 
     setIsEmpty(true);
     onClear?.();
@@ -170,7 +168,7 @@ export function SignatureCanvas({
 
   return (
     <div className={`flex flex-col gap-4 ${className}`}>
-      <div className="border-2 border-gray-300 rounded-lg overflow-hidden bg-white">
+      <div className="rounded-lg overflow-hidden">
         <canvas
           ref={canvasRef}
           width={width}

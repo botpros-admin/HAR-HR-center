@@ -5,6 +5,7 @@ import { X, Loader2, CheckCircle, AlertCircle, FileText, PenTool } from 'lucide-
 import { useQueryClient } from '@tanstack/react-query';
 import { SignatureCanvas } from './SignatureCanvas';
 import { SecureSignatureBox } from './SecureSignatureBox';
+import { SecureSignatureFrame } from './SecureSignatureFrame';
 
 interface FieldPosition {
   type: 'signature' | 'initials' | 'date' | 'checkbox' | 'text';
@@ -697,10 +698,15 @@ export function NativeSignatureModal({
       </div>
 
       {/* Signature Popup Modal */}
-      {showSignaturePopup && activeField && (
-        <>
-          {/* Load Dancing Script font */}
-          <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap" rel="stylesheet" />
+      {showSignaturePopup && activeField && (() => {
+        // Generate unique serial number for this signature
+        const timestamp = Date.now();
+        const serialNumber = `HSC-${timestamp.toString(36).toUpperCase()}-${assignmentId.toString().padStart(4, '0')}`;
+
+        return (
+          <>
+            {/* Load Dancing Script font */}
+            <link href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap" rel="stylesheet" />
 
           <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 md:p-4" style={{ background: 'rgba(0,0,0,0.6)', touchAction: 'none' }}>
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col" style={{ touchAction: 'auto' }}>
@@ -788,17 +794,17 @@ export function NativeSignatureModal({
                         </p>
                       </div>
 
-                      {/* Signature Canvas with Security Features */}
-                      <div className="relative flex-shrink-0">
-                        {tempSignature ? (
-                          <div className="relative" style={{ width: activeField.type === 'initials' ? 300 : 500, height: activeField.type === 'initials' ? 150 : 200 }}>
-                            <SecureSignatureBox
-                              signatureDataUrl={tempSignature}
-                              timestamp={Date.now()}
-                              employeeId={assignmentId.toString()}
-                            />
-                          </div>
-                        ) : (
+                      {/* Signature Canvas with Security Features - Always visible background */}
+                      <div className="relative flex-shrink-0" style={{ width: activeField.type === 'initials' ? 300 : 500, height: activeField.type === 'initials' ? 150 : 200 }}>
+                        {/* Security frame - always visible as background */}
+                        <SecureSignatureFrame
+                          width={activeField.type === 'initials' ? 300 : 500}
+                          height={activeField.type === 'initials' ? 150 : 200}
+                          serialNumber={serialNumber}
+                        />
+
+                        {/* Canvas overlay for drawing */}
+                        <div className="absolute inset-0 signature-canvas-enterprise">
                           <SignatureCanvas
                             onSave={handleSaveSignature}
                             onClear={() => setTempSignature(null)}
@@ -807,7 +813,7 @@ export function NativeSignatureModal({
                             showButtons={false}
                             autoSaveOnDraw={true}
                           />
-                        )}
+                        </div>
                       </div>
                     </>
                   ) : (
@@ -832,20 +838,24 @@ export function NativeSignatureModal({
                       </div>
 
                       <div className="flex-1 flex items-center justify-center min-h-0">
-                        {/* Signature Preview Area with Security Features */}
-                        <div className="relative w-full" style={{ height: '200px' }}>
-                          <div className="relative h-full">
-                            {tempSignature ? (
-                              <SecureSignatureBox
-                                signatureDataUrl={tempSignature}
-                                timestamp={Date.now()}
-                                employeeId={assignmentId.toString()}
-                              />
-                            ) : (
-                              <div className="border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 w-full h-full flex items-center justify-center text-gray-400 text-sm">
-                                Your signature will appear here
-                              </div>
-                            )}
+                        {/* Signature Preview Area with Security Features - Always visible background */}
+                        <div className="relative w-full flex items-center justify-center" style={{ height: '200px' }}>
+                          <div className="relative" style={{ width: activeField.type === 'initials' ? 300 : 500, height: activeField.type === 'initials' ? 150 : 200 }}>
+                            {/* Security frame - always visible as background */}
+                            <SecureSignatureFrame
+                              width={activeField.type === 'initials' ? 300 : 500}
+                              height={activeField.type === 'initials' ? 150 : 200}
+                              serialNumber={serialNumber}
+                            />
+
+                            {/* Typed signature preview overlay */}
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              {tempSignature ? (
+                                <img src={tempSignature} alt="Signature preview" className="max-w-full max-h-full object-contain" />
+                              ) : (
+                                <span className="text-gray-300 text-xs">Awaiting signature...</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -903,7 +913,8 @@ export function NativeSignatureModal({
             </div>
           </div>
         </>
-      )}
+        );
+      })()}
     </div>
   );
 }
