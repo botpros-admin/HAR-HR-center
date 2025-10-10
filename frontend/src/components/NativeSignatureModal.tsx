@@ -73,20 +73,21 @@ export function NativeSignatureModal({
   const [pageWidths, setPageWidths] = useState<number[]>([]);
   const [pageHeights, setPageHeights] = useState<number[]>([]);
   const [loadedPages, setLoadedPages] = useState<Set<number>>(new Set());
+  const [convertedFields, setConvertedFields] = useState<FieldPosition[]>([]);
 
   const queryClient = useQueryClient();
 
   const allPagesLoaded = loadedPages.size === numPages && numPages > 0;
 
-  // Parse fieldPositions
+  // Parse raw fieldPositions
   const parsedFieldPositions = React.useMemo(() => {
     if (Array.isArray(fieldPositions)) {
-      return fieldPositions.map((f, idx) => ({ ...f, id: f.id || `field-${idx}` }));
+      return fieldPositions;
     }
     if (typeof fieldPositions === 'string') {
       try {
         const parsed = JSON.parse(fieldPositions);
-        return Array.isArray(parsed) ? parsed.map((f: any, idx: number) => ({ ...f, id: f.id || `field-${idx}` })) : [];
+        return Array.isArray(parsed) ? parsed : [];
       } catch (e) {
         console.error('[NativeSignatureModal] Failed to parse fieldPositions:', e);
         return [];
@@ -94,6 +95,46 @@ export function NativeSignatureModal({
     }
     return [];
   }, [fieldPositions]);
+
+  // Convert fields from PDF points to percentages (EXACT same logic as admin view)
+  useEffect(() => {
+    if (!parsedFieldPositions.length || !allPagesLoaded) return;
+
+    try {
+      // Convert from PDF points to percentage coordinates
+      const converted = parsedFieldPositions.map((f: any, i: number) => {
+        const pageIndex = (f.page || f.pageNumber || 1) - 1;
+        const pageWidth = pageWidths[pageIndex] || 800;
+        const pageHeight = pageHeights[pageIndex] || 1132;
+
+        // Convert PDF points to percentages
+        // X: straightforward conversion (left edge)
+        // Y: flip axis back (PDF origin is bottom-left, React is top-left)
+        //    PDF Y is the BOTTOM of the field, React Y is the TOP
+        const percentX = (f.x / pageWidth) * 100;
+        const percentHeight = (f.height / pageHeight) * 100;
+        const percentY = ((pageHeight - f.y - f.height) / pageHeight) * 100;
+        const percentWidth = (f.width / pageWidth) * 100;
+
+        return {
+          ...f,
+          id: f.id || `field-${i}`,
+          x: percentX,
+          y: percentY,
+          width: percentWidth,
+          height: percentHeight,
+          page: f.page || f.pageNumber || 1,
+          type: f.type,
+          label: f.label,
+          required: f.required,
+        };
+      });
+
+      setConvertedFields(converted);
+    } catch (e) {
+      console.error('Failed to convert field positions:', e);
+    }
+  }, [parsedFieldPositions, allPagesLoaded, pageWidths, pageHeights]);
 
   // Lock body scroll when modal is open
   useEffect(() => {
@@ -167,9 +208,9 @@ export function NativeSignatureModal({
 
   // Check if all required fields are filled
   const allRequiredFieldsFilled = React.useMemo(() => {
-    const requiredFields = parsedFieldPositions.filter((f: FieldPosition) => f.required !== false);
+    const requiredFields = convertedFields.filter((f: FieldPosition) => f.required !== false);
     return requiredFields.every((f: FieldPosition) => filledFields.has(f.id!));
-  }, [parsedFieldPositions, filledFields]);
+  }, [convertedFields, filledFields]);
 
   // Generate signature from typed name
   const generateTypedSignature = (name: string, isInitials: boolean = false): string => {
@@ -282,32 +323,8 @@ export function NativeSignatureModal({
     }
   };
 
-  // Convert coordinates from PDF points to screen pixels (per-page)
-  const convertCoordinates = (field: FieldPosition, pageNum: number) => {
-    const pageIndex = pageNum - 1;
-    const pageWidth = pageWidths[pageIndex];
-    const pageHeight = pageHeights[pageIndex];
-
-    if (!pageWidth || !pageHeight) return null;
-
-    // Fixed render width matches admin
-    const RENDER_WIDTH = 800;
-    const renderHeight = (pageHeight / pageWidth) * RENDER_WIDTH;
-
-    // Convert from PDF points to screen pixels using actual PDF dimensions
-    const x = (field.x / pageWidth) * RENDER_WIDTH;
-    const width = (field.width / pageWidth) * RENDER_WIDTH;
-    const height = (field.height / pageHeight) * renderHeight;
-    const y = renderHeight - ((field.y / pageHeight) * renderHeight) - height;
-
-    return { x, y, width, height };
-  };
-
-  // Render field overlay for a specific page
-  const renderFieldOverlay = (field: FieldPosition, index: number, pageNum: number) => {
-    const coords = convertCoordinates(field, pageNum);
-    if (!coords) return null;
-
+  // Render field overlay for a specific page (EXACT same logic as admin view)
+  const renderFieldOverlay = (field: FieldPosition, index: number) => {
     const isFilled = filledFields.has(field.id!);
     const filledData = filledFields.get(field.id!);
 
@@ -326,16 +343,23 @@ export function NativeSignatureModal({
     return (
       <div
         key={field.id}
-        className={`absolute border-2 ${getFieldColor()} cursor-pointer transition-all`}
+        className={`absolute border-2 ${getFieldColor()} cursor-pointer transition-all ${field.required ? 'border-red-400' : 'border-white'} rounded opacity-60 hover:opacity-90`}
         style={{
-          left: `${coords.x}px`,
-          top: `${coords.y}px`,
-          width: `${coords.width}px`,
-          height: `${coords.height}px`,
+          left: `${field.x}%`,
+          top: `${field.y}%`,
+          width: `${field.width}%`,
+          height: `${field.height}%`,
         }}
         onClick={() => handleFieldClick(field)}
         title={`Click to ${isFilled ? 'edit' : 'fill'} ${field.label}`}
       >
+        {/* Required indicator */}
+        {field.required && (
+          <div className="absolute -top-1 -left-1 w-3 h-3 bg-red-500 text-white rounded-full flex items-center justify-center text-xs font-bold z-10">
+            *
+          </div>
+        )}
+
         {isFilled ? (
           <div className="absolute inset-0 flex items-center justify-center p-1">
             {(field.type === 'signature' || field.type === 'initials') && filledData ? (
@@ -380,9 +404,9 @@ export function NativeSignatureModal({
     setError(null);
 
     try {
-      // Get signature fields that were filled
-      const signatureFields = parsedFieldPositions.filter((f: FieldPosition) =>
-        f.type === 'signature' && filledFields.has(f.id!)
+      // Get signature fields that were filled (use raw PDF points from parsedFieldPositions)
+      const signatureFields = parsedFieldPositions.filter((f: any) =>
+        f.type === 'signature' && filledFields.has(f.id || `field-${parsedFieldPositions.indexOf(f)}`)
       );
 
       if (signatureFields.length === 0) {
@@ -390,8 +414,8 @@ export function NativeSignatureModal({
       }
 
       // Use the first signature for the signature image
-      const primarySignatureField = signatureFields[0];
-      const signatureData = filledFields.get(primarySignatureField.id!);
+      const signatureFieldId = signatureFields[0].id || `field-${parsedFieldPositions.indexOf(signatureFields[0])}`;
+      const signatureData = filledFields.get(signatureFieldId);
 
       if (!signatureData) {
         throw new Error('Signature data not found');
@@ -486,8 +510,8 @@ export function NativeSignatureModal({
                   )}
                 </div>
                 <div className="flex items-center gap-2 text-xs text-gray-600">
-                  <span className={filledFields.size === parsedFieldPositions.length ? 'text-green-600 font-medium' : ''}>
-                    {filledFields.size}/{parsedFieldPositions.length} fields completed
+                  <span className={filledFields.size === convertedFields.length ? 'text-green-600 font-medium' : ''}>
+                    {filledFields.size}/{convertedFields.length} fields completed
                   </span>
                 </div>
               </div>
@@ -581,10 +605,10 @@ export function NativeSignatureModal({
                               {/* Per-page field overlay */}
                               <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
                                 <div className="relative w-full h-full pointer-events-auto">
-                                  {parsedFieldPositions
+                                  {convertedFields
                                     .filter((field: FieldPosition) => field.page === pageNum)
                                     .map((field: FieldPosition, index: number) =>
-                                      renderFieldOverlay(field, index, pageNum)
+                                      renderFieldOverlay(field, index)
                                     )}
                                 </div>
                               </div>
