@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { z } from 'zod';
 import type { Env } from '../types';
 import { verifySession } from '../lib/auth';
 import { BitrixClient } from '../lib/bitrix';
@@ -35,6 +36,91 @@ adminRoutes.use('/*', async (c, next) => {
 
   await next();
 });
+
+// Field mapping: Frontend camelCase -> Bitrix ufCrm6* fields
+const FIELD_MAP: Record<string, string> = {
+  // Personal Information
+  firstName: 'ufCrm6Name',
+  middleName: 'ufCrm6SecondName',
+  lastName: 'ufCrm6LastName',
+  preferredName: 'ufCrm6PreferredName',
+  dateOfBirth: 'ufCrm6PersonalBirthday',
+  email: 'ufCrm6Email',
+  phone: 'ufCrm6PersonalMobile',
+  address: 'ufCrm6Address',
+
+  // Employment Details
+  position: 'ufCrm6WorkPosition',
+  subsidiary: 'ufCrm6Subsidiary',
+  employmentStatus: 'ufCrm6EmploymentStatus',
+  hireDate: 'ufCrm6EmploymentStartDate',
+  employmentType: 'ufCrm6EmploymentType',
+  shift: 'ufCrm6Shift',
+
+  // Compensation & Benefits
+  ptoDays: 'ufCrm6PtoDays',
+  healthInsurance: 'ufCrm6HealthInsurance',
+  has401k: 'ufCrm_6_401K_ENROLLMENT',
+
+  // Education & Skills
+  educationLevel: 'ufCrm6EducationLevel',
+  schoolName: 'ufCrm6SchoolName',
+  graduationYear: 'ufCrm6GraduationYear',
+  fieldOfStudy: 'ufCrm6FieldOfStudy',
+  skills: 'ufCrm6Skills',
+  certifications: 'ufCrm6Certifications',
+
+  // IT & Equipment
+  softwareExperience: 'ufCrm6SoftwareExperience',
+  equipmentAssigned: 'ufCrm6EquipmentAssigned',
+
+  // Additional
+  additionalInfo: 'ufCrm6AdditionalInfo',
+};
+
+// Sensitive fields that should be redacted in audit logs
+const SENSITIVE_FIELDS = ['ufCrm6Ssn', 'ufCrm6Salary'];
+
+// Validation schema for employee updates
+const EmployeeUpdateSchema = z.object({
+  // Personal Information
+  firstName: z.string().min(1).max(100).optional(),
+  middleName: z.string().max(100).optional(),
+  lastName: z.string().min(1).max(100).optional(),
+  preferredName: z.string().max(100).optional(),
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  email: z.array(z.string().email()).optional(),
+  phone: z.array(z.string().regex(/^\+?[\d\s\-\(\)]+$/)).optional(),
+  address: z.string().max(500).optional(),
+
+  // Employment Details
+  position: z.string().min(1).max(200).optional(),
+  subsidiary: z.string().max(200).optional(),
+  employmentStatus: z.enum(['Y', 'N']).optional(),
+  hireDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  employmentType: z.string().max(100).optional(),
+  shift: z.string().max(100).optional(),
+
+  // Compensation & Benefits
+  ptoDays: z.string().max(10).optional(),
+  healthInsurance: z.number().int().optional(),
+  has401k: z.number().int().optional(),
+
+  // Education & Skills
+  educationLevel: z.string().max(100).optional(),
+  schoolName: z.string().max(200).optional(),
+  graduationYear: z.string().regex(/^\d{4}$/).optional(),
+  fieldOfStudy: z.string().max(200).optional(),
+  skills: z.string().max(1000).optional(),
+  certifications: z.string().max(1000).optional(),
+
+  // IT & Equipment
+  softwareExperience: z.string().max(1000).optional(),
+  equipmentAssigned: z.array(z.string()).optional(),
+
+  // Additional
+  additionalInfo: z.string().max(5000).optional(),
+}).strict();
 
 // Admin endpoints (placeholder for future)
 adminRoutes.get('/stats', async (c) => {
@@ -101,6 +187,273 @@ adminRoutes.post('/employees/refresh', async (c) => {
   } catch (error) {
     console.error('Error refreshing employees:', error);
     return c.json({ error: 'Failed to refresh employees', details: (error as Error).message }, 500);
+  }
+});
+
+// Get full employee details by Bitrix ID
+adminRoutes.get('/employee/:bitrixId', async (c) => {
+  const env = c.env;
+  const bitrixId = parseInt(c.req.param('bitrixId'));
+
+  if (isNaN(bitrixId)) {
+    return c.json({ error: 'Invalid employee ID' }, 400);
+  }
+
+  try {
+    const bitrix = new BitrixClient(env);
+    const employee = await bitrix.getEmployee(bitrixId);
+
+    if (!employee) {
+      return c.json({ error: 'Employee not found' }, 404);
+    }
+
+    // Return full Bitrix employee data
+    return c.json({ employee });
+
+  } catch (error) {
+    console.error('Error fetching employee details:', error);
+    return c.json({ error: 'Failed to fetch employee details', details: (error as Error).message }, 500);
+  }
+});
+
+// Update employee details in Bitrix
+adminRoutes.put('/employee/:bitrixId', async (c) => {
+  const env = c.env;
+  const bitrixId = parseInt(c.req.param('bitrixId'));
+
+  if (isNaN(bitrixId)) {
+    return c.json({ error: 'Invalid employee ID' }, 400);
+  }
+
+  try {
+    const body = await c.req.json();
+    const { updates } = body;
+
+    if (!updates || typeof updates !== 'object') {
+      return c.json({ error: 'Missing or invalid updates object' }, 400);
+    }
+
+    // Validate that badge number and ID are not being changed
+    if (updates.id || updates.ufCrm6BadgeNumber) {
+      return c.json({ error: 'Cannot modify employee ID or badge number' }, 400);
+    }
+
+    // Get session to track who made the update
+    let sessionId = c.req.header('Cookie')
+      ?.split('; ')
+      .find(row => row.startsWith('session='))
+      ?.split('=')[1];
+
+    let updatedBy: string | null = null;
+    if (sessionId) {
+      const session = await env.DB.prepare('SELECT full_name FROM sessions s JOIN employee_cache ec ON s.employee_id = ec.bitrix_id WHERE s.id = ?').bind(sessionId).first();
+      if (session) {
+        updatedBy = session.full_name as string;
+      }
+    }
+
+    // Update employee in Bitrix24
+    const bitrix = new BitrixClient(env);
+    const updatedEmployee = await bitrix.updateEmployee(bitrixId, updates);
+
+    if (!updatedEmployee) {
+      return c.json({ error: 'Failed to update employee in Bitrix24' }, 500);
+    }
+
+    // Log the update in audit log
+    await env.DB.prepare(`
+      INSERT INTO audit_logs (
+        employee_id, bitrix_id, action, status, metadata, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(
+      bitrixId,
+      bitrixId,
+      'employee_update',
+      'success',
+      JSON.stringify({
+        updatedBy,
+        updatedFields: Object.keys(updates),
+        timestamp: new Date().toISOString()
+      }),
+      new Date().toISOString()
+    ).run();
+
+    return c.json({
+      success: true,
+      message: 'Employee updated successfully',
+      employee: updatedEmployee
+    });
+
+  } catch (error) {
+    console.error('Error updating employee:', error);
+
+    // Log the failed update
+    try {
+      await env.DB.prepare(`
+        INSERT INTO audit_logs (
+          employee_id, bitrix_id, action, status, metadata, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(
+        bitrixId,
+        bitrixId,
+        'employee_update',
+        'failure',
+        JSON.stringify({
+          error: (error as Error).message,
+          timestamp: new Date().toISOString()
+        }),
+        new Date().toISOString()
+      ).run();
+    } catch (auditError) {
+      console.error('Failed to log audit entry:', auditError);
+    }
+
+    return c.json({ error: 'Failed to update employee', details: (error as Error).message }, 500);
+  }
+});
+
+// PATCH employee (NEW - proper REST endpoint with validation and diff tracking)
+adminRoutes.patch('/employee/:bitrixId', async (c) => {
+  const env = c.env;
+  const bitrixId = parseInt(c.req.param('bitrixId'));
+
+  if (isNaN(bitrixId)) {
+    return c.json({ error: 'Invalid employee ID' }, 400);
+  }
+
+  try {
+    const body = await c.req.json();
+
+    // Validate with Zod
+    const validation = EmployeeUpdateSchema.safeParse(body);
+    if (!validation.success) {
+      return c.json({
+        error: 'Validation failed',
+        details: validation.error.errors
+      }, 400);
+    }
+
+    const validatedData = validation.data;
+
+    // Map frontend field names to Bitrix field names
+    const bitrixFields: Record<string, any> = {};
+    for (const [key, value] of Object.entries(validatedData)) {
+      const bitrixKey = FIELD_MAP[key];
+      if (!bitrixKey) {
+        return c.json({ error: `Unknown field: ${key}` }, 400);
+      }
+      bitrixFields[bitrixKey] = value;
+    }
+
+    // Fetch current employee data for diff tracking
+    const bitrix = new BitrixClient(env);
+    const currentEmployee = await bitrix.getEmployee(bitrixId);
+
+    if (!currentEmployee) {
+      return c.json({ error: 'Employee not found' }, 404);
+    }
+
+    // Build diff with before/after values
+    const diff: Record<string, { before: any; after: any }> = {};
+    for (const [field, newValue] of Object.entries(bitrixFields)) {
+      const oldValue = (currentEmployee as any)[field];
+
+      // Only track actual changes
+      if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+        // Redact sensitive fields
+        if (SENSITIVE_FIELDS.includes(field)) {
+          diff[field] = {
+            before: oldValue ? '[REDACTED]' : null,
+            after: newValue ? '[REDACTED]' : null
+          };
+        } else {
+          diff[field] = { before: oldValue, after: newValue };
+        }
+      }
+    }
+
+    // If no changes, return early
+    if (Object.keys(diff).length === 0) {
+      return c.json({
+        success: true,
+        message: 'No changes to update',
+        employee: currentEmployee
+      });
+    }
+
+    // Get session to track who made the update
+    let sessionId = c.req.header('Cookie')
+      ?.split('; ')
+      .find(row => row.startsWith('session='))
+      ?.split('=')[1];
+
+    let updatedBy: string | null = null;
+    if (sessionId) {
+      const session = await env.DB.prepare(
+        'SELECT full_name FROM sessions s JOIN employee_cache ec ON s.employee_id = ec.bitrix_id WHERE s.id = ?'
+      ).bind(sessionId).first();
+      if (session) {
+        updatedBy = session.full_name as string;
+      }
+    }
+
+    // Update employee in Bitrix24
+    const updatedEmployee = await bitrix.updateEmployee(bitrixId, bitrixFields);
+
+    if (!updatedEmployee) {
+      return c.json({ error: 'Failed to update employee in Bitrix24' }, 500);
+    }
+
+    // Log the update with full diff in audit log
+    await env.DB.prepare(`
+      INSERT INTO audit_logs (
+        employee_id, bitrix_id, action, status, metadata, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(
+      bitrixId,
+      bitrixId,
+      'employee_update',
+      'success',
+      JSON.stringify({
+        updatedBy,
+        changeCount: Object.keys(diff).length,
+        changes: diff,
+        timestamp: new Date().toISOString()
+      }),
+      new Date().toISOString()
+    ).run();
+
+    return c.json({
+      success: true,
+      message: `Successfully updated ${Object.keys(diff).length} field(s)`,
+      employee: updatedEmployee
+    });
+
+  } catch (error) {
+    console.error('Error updating employee:', error);
+
+    // Log the failed update
+    try {
+      await env.DB.prepare(`
+        INSERT INTO audit_logs (
+          employee_id, bitrix_id, action, status, metadata, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(
+        bitrixId,
+        bitrixId,
+        'employee_update',
+        'failure',
+        JSON.stringify({
+          error: (error as Error).message,
+          timestamp: new Date().toISOString()
+        }),
+        new Date().toISOString()
+      ).run();
+    } catch (auditError) {
+      console.error('Failed to log audit entry:', auditError);
+    }
+
+    return c.json({ error: 'Failed to update employee', details: (error as Error).message }, 500);
   }
 });
 

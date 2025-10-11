@@ -162,6 +162,17 @@ class ApiClient {
     });
   }
 
+  async getEmployeeDetails(bitrixId: number): Promise<{ employee: any }> {
+    return this.request<{ employee: any }>(`/admin/employee/${bitrixId}`);
+  }
+
+  async updateEmployee(bitrixId: number, updates: Record<string, any>): Promise<{ success: boolean; message: string; employee: any }> {
+    return this.request<{ success: boolean; message: string; employee: any }>(`/admin/employee/${bitrixId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+  }
+
   // Admin - Templates
   async getTemplates(params?: { category?: string; active_only?: boolean }): Promise<{ templates: any[] }> {
     const searchParams = new URLSearchParams();

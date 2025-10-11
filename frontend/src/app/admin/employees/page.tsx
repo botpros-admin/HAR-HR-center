@@ -123,11 +123,22 @@ export default function EmployeesPage() {
         </div>
       ) : (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
+          {/* Scroll indicator hint */}
+          <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between">
+            <p className="text-xs text-blue-800">
+              <strong>Tip:</strong> Employee name stays visible while scrolling. Click "View Details" to edit employee information.
+            </p>
+            <div className="text-xs text-blue-600 font-medium">← Scroll →</div>
+          </div>
+
+          <div className="overflow-x-auto relative">
+            {/* Scroll fade indicator on right */}
+            <div className="absolute top-0 right-0 bottom-0 w-8 bg-gradient-to-l from-white to-transparent pointer-events-none z-10"></div>
+
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="sticky left-0 z-20 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-gray-50 shadow-[4px_0_6px_-1px_rgba(0,0,0,0.1)]">
                     Employee
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -153,7 +164,7 @@ export default function EmployeesPage() {
               <tbody className="divide-y divide-gray-200">
                 {filteredEmployees.map((employee: any) => (
                   <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="sticky left-0 z-20 px-6 py-4 whitespace-nowrap bg-white shadow-[4px_0_6px_-1px_rgba(0,0,0,0.1)]">
                       <div className="flex items-center">
                         <div className="w-10 h-10 bg-hartzell-blue rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
                           {employee.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}

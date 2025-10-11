@@ -195,9 +195,10 @@ export class BitrixClient {
   }
 
   /**
-   * Update employee fields in Bitrix24
+   * Update employee fields in Bitrix24 with eventual consistency handling
    */
   async updateEmployee(id: number, fields: Partial<BitrixEmployee>): Promise<BitrixEmployee | null> {
+    // Step 1: Update in Bitrix24
     const response = await this.request<BitrixItemResult>('crm.item.update', {
       entityTypeId: this.entityTypeId,
       id: id.toString(),
@@ -205,19 +206,54 @@ export class BitrixClient {
     });
 
     const updatedEmployee = response.result?.item as BitrixEmployee | undefined;
-
-    if (updatedEmployee) {
-      // Invalidate caches
-      await this.env.CACHE.delete(`employee:id:${id}`);
-      if (updatedEmployee.ufCrm6BadgeNumber) {
-        await this.env.CACHE.delete(`employee:badge:${updatedEmployee.ufCrm6BadgeNumber}`);
-      }
-
-      // Update D1 cache with new data
-      await this.updateEmployeeCache(updatedEmployee);
+    if (!updatedEmployee) {
+      return null;
     }
 
-    return updatedEmployee || null;
+    // Step 2: Wait for Bitrix eventual consistency (500ms delay)
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Step 3: Fetch fresh data from Bitrix with retry logic
+    let freshEmployee = updatedEmployee;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const refetchResponse = await this.request<BitrixItemResult>('crm.item.get', {
+          entityTypeId: this.entityTypeId,
+          id: id.toString()
+        });
+
+        const refetched = refetchResponse.result?.item as BitrixEmployee | undefined;
+        if (refetched) {
+          freshEmployee = refetched;
+          break; // Successfully refetched
+        }
+      } catch (err) {
+        console.error(`Refetch attempt ${attempt + 1} failed:`, err);
+        if (attempt < 2) {
+          // Wait 300ms before retry
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      }
+    }
+
+    // Step 4: Update all caches with fresh data
+    try {
+      const cacheKeyId = `employee:id:${id}`;
+      const cacheKeyBadge = `employee:badge:${freshEmployee.ufCrm6BadgeNumber}`;
+
+      await Promise.all([
+        this.env.CACHE.put(cacheKeyId, JSON.stringify(freshEmployee), { expirationTtl: 86400 }),
+        freshEmployee.ufCrm6BadgeNumber
+          ? this.env.CACHE.put(cacheKeyBadge, JSON.stringify(freshEmployee), { expirationTtl: 86400 })
+          : Promise.resolve(),
+        this.updateEmployeeCache(freshEmployee)
+      ]);
+    } catch (cacheErr) {
+      console.error('Cache update failed after employee update:', cacheErr);
+      // Don't fail the request, but log for monitoring
+    }
+
+    return freshEmployee;
   }
 
   /**
