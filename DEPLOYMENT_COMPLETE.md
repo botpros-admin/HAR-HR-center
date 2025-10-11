@@ -8,11 +8,12 @@
 ## 🚀 Deployment Details
 
 ### Backend (Cloudflare Workers)
-- **URL**: https://hartzell-hr-center.agent-b68.workers.dev
-- **Version**: b939bd96-4052-4c59-9cca-0ac1b9a6acfe
+- **URL**: https://hartzell.work/api (Production)
+- **Version**: b3b03f79-7c8b-4c3c-8606-d69f91a014f0
 - **Upload Size**: 1176.54 KiB / gzip: 275.62 KiB
-- **Startup Time**: 42 ms
-- **Status**: ✅ Deployed successfully
+- **Startup Time**: 43 ms
+- **Status**: ✅ Deployed successfully to production environment
+- **Route**: hartzell.work/api/* (zone name: hartzell.work)
 
 ### Frontend (Cloudflare Pages)
 - **URL**: https://d6457101.hartzell-hr-frontend.pages.dev
@@ -329,6 +330,37 @@ npx wrangler pages deploy out --project-name=hartzell-hr-frontend
 - **Workers Dashboard**: https://dash.cloudflare.com/?to=/:account/workers
 - **Pages Dashboard**: https://dash.cloudflare.com/?to=/:account/pages
 - **D1 Database**: https://dash.cloudflare.com/?to=/:account/d1
+
+---
+
+## 🔧 Troubleshooting
+
+### Issue: 404 Not Found on /api/admin/employee/:id
+
+**Symptom**: Frontend shows `GET https://hartzell.work/api/admin/employee/64 404 (Not Found)`
+
+**Root Cause**: Backend was deployed to default environment instead of production environment. Only the production environment has the custom domain routes configured.
+
+**Solution**:
+```bash
+cd /mnt/c/Users/Agent/Desktop/HR\ Center/cloudflare-app
+npx wrangler deploy --env production
+```
+
+**Verification**:
+```bash
+# Should return 401 (auth required) not 404 (not found)
+curl -s -o /dev/null -w "%{http_code}" https://hartzell.work/api/admin/employee/64
+
+# Should return healthy status
+curl -s https://hartzell.work/api/health
+```
+
+**Key Points**:
+- Always deploy to production with `--env production` flag
+- Routes are only configured in `[env.production]` section of wrangler.toml
+- Default deployment goes to `hartzell-hr-center.agent-b68.workers.dev` (no custom domain)
+- Production deployment activates `hartzell.work/api/*` route
 
 ---
 
