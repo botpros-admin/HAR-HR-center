@@ -1,38 +1,35 @@
 'use client';
 
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState } from 'react';
 import { z } from 'zod';
-import {
-  ArrowLeft, User, Briefcase, DollarSign, FileText, Shield, GraduationCap,
-  Package, Clock, Edit, Save, X, Phone, Mail, MapPin, Calendar, Building,
-  Users, CreditCard, Award, CheckCircle, XCircle, AlertCircle
-} from 'lucide-react';
 
 // Validation schema matching backend
 const employeeSchema = z.object({
-  firstName: z.string().min(1, 'First name is required').max(100),
+  firstName: z.string().min(1, 'Required').max(100),
   middleName: z.string().max(100).optional(),
-  lastName: z.string().min(1, 'Last name is required').max(100),
+  lastName: z.string().min(1, 'Required').max(100),
   preferredName: z.string().max(100).optional(),
-  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format'),
-  email: z.array(z.string().email('Invalid email format')).min(1, 'At least one email required'),
-  phone: z.array(z.string().regex(/^\+?[\d\s\-\(\)]+$/, 'Invalid phone format')).min(1, 'At least one phone required'),
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format: YYYY-MM-DD'),
+  email: z.array(z.string().email('Invalid email')).min(1, 'Required'),
+  phone: z.array(z.string().regex(/^\+?[\d\s\-\(\)]+$/, 'Invalid phone')),
   address: z.string().max(500).optional(),
-  position: z.string().min(1, 'Position is required').max(200),
+  badgeNumber: z.string().min(1),
+  position: z.string().min(1, 'Required').max(200),
   subsidiary: z.string().max(200).optional(),
   employmentStatus: z.enum(['Y', 'N']),
-  hireDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format').optional(),
+  hireDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format: YYYY-MM-DD').optional(),
   employmentType: z.string().max(100).optional(),
   shift: z.string().max(100).optional(),
+  ssn: z.string().optional(),
   ptoDays: z.string().max(10).optional(),
   healthInsurance: z.number().int().optional(),
   has401k: z.number().int().optional(),
   educationLevel: z.string().max(100).optional(),
   schoolName: z.string().max(200).optional(),
-  graduationYear: z.string().regex(/^\d{4}$/, 'Year must be 4 digits').optional(),
+  graduationYear: z.string().regex(/^\d{4}$/, 'Format: YYYY').optional(),
   fieldOfStudy: z.string().max(200).optional(),
   skills: z.string().max(1000).optional(),
   certifications: z.string().max(1000).optional(),
@@ -43,739 +40,492 @@ const employeeSchema = z.object({
 
 type EmployeeFormData = z.infer<typeof employeeSchema>;
 
+// Chevron icons (inline SVG for simplicity)
+const ChevronDown = () => (
+  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+  </svg>
+);
+
+const ChevronUp = () => (
+  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+  </svg>
+);
+
+// Collapsible section component
+function Section({ title, isOpen, onToggle, children }: { title: string; isOpen: boolean; onToggle: () => void; children: React.ReactNode }) {
+  return (
+    <div className="border border-slate-200 rounded mb-2 bg-white shadow-sm">
+      <button
+        onClick={onToggle}
+        className="w-full px-4 py-2 flex items-center justify-between hover:bg-slate-50 transition-colors"
+      >
+        <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">{title}</h3>
+        <span className="text-slate-500">{isOpen ? <ChevronUp /> : <ChevronDown />}</span>
+      </button>
+      {isOpen && (
+        <div className="px-4 py-3 border-t border-slate-100">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function EmployeeDetailPage() {
   const searchParams = useSearchParams();
-  const employeeId = searchParams.get('id');
-  const router = useRouter();
+  const bitrixId = searchParams?.get('id');
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState('personal');
+
   const [isEditing, setIsEditing] = useState(false);
-  const [editedData, setEditedData] = useState<Partial<EmployeeFormData>>({});
+  const [formData, setFormData] = useState<Partial<EmployeeFormData>>({});
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
-  // Fetch single employee using new API endpoint
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['employee', employeeId],
-    queryFn: async () => {
-      if (!employeeId) throw new Error('No employee ID');
-      return api.getEmployeeDetails(parseInt(employeeId));
-    },
-    enabled: !!employeeId,
+  // All sections open by default for maximum information density
+  const [openSections, setOpenSections] = useState({
+    personal: true,
+    employment: true,
+    compensation: true,
+    education: true,
+    it: true,
+    additional: true,
   });
 
-  const employee = data?.employee;
+  const toggleSection = (section: keyof typeof openSections) => {
+    setOpenSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  // Fetch employee details
+  const { data: employeeData, isLoading, error } = useQuery({
+    queryKey: ['employee', bitrixId],
+    queryFn: async () => {
+      if (!bitrixId) throw new Error('No employee ID provided');
+      return api.getEmployeeDetails(parseInt(bitrixId));
+    },
+    enabled: !!bitrixId,
+  });
+
+  const employee = employeeData?.employee;
 
   // Update mutation with optimistic updates
   const updateMutation = useMutation({
-    mutationFn: (updates: Partial<EmployeeFormData>) => {
-      if (!employeeId) throw new Error('No employee ID');
-      return api.updateEmployee(parseInt(employeeId), updates);
+    mutationFn: async (updates: Partial<EmployeeFormData>) => {
+      if (!bitrixId) throw new Error('No employee ID');
+      const { badgeNumber, ...updatePayload } = updates;
+      return api.updateEmployee(parseInt(bitrixId), updatePayload);
     },
-
-    // Optimistic update
     onMutate: async (updates) => {
-      // Cancel outgoing queries
-      await queryClient.cancelQueries({ queryKey: ['employee', employeeId] });
-
-      // Snapshot previous value
-      const previous = queryClient.getQueryData(['employee', employeeId]);
-
-      // Optimistically update
-      queryClient.setQueryData(['employee', employeeId], (old: any) => ({
-        employee: { ...old?.employee, ...updates }
+      await queryClient.cancelQueries({ queryKey: ['employee', bitrixId] });
+      const previousData = queryClient.getQueryData(['employee', bitrixId]);
+      queryClient.setQueryData(['employee', bitrixId], (old: any) => ({
+        ...old,
+        employee: { ...old.employee, ...updates }
       }));
-
-      return { previous };
+      return { previousData };
     },
-
-    // Rollback on error
     onError: (err, updates, context) => {
-      queryClient.setQueryData(['employee', employeeId], context?.previous);
-      alert(`Failed to update employee: ${(err as Error).message}`);
+      if (context?.previousData) {
+        queryClient.setQueryData(['employee', bitrixId], context.previousData);
+      }
+      alert(`Failed to update: ${(err as Error).message}`);
     },
-
-    // Refetch on success
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['employee', employeeId] });
-      queryClient.invalidateQueries({ queryKey: ['employees'] }); // Refresh list too
+      queryClient.invalidateQueries({ queryKey: ['employee', bitrixId] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
       setIsEditing(false);
-      setEditedData({});
       setValidationErrors({});
     },
   });
 
   const handleEdit = () => {
-    // Deep copy to prevent mutation
-    const initialData = {
-      firstName: employee?.ufCrm6Name || '',
-      middleName: employee?.ufCrm6SecondName || '',
-      lastName: employee?.ufCrm6LastName || '',
-      preferredName: employee?.ufCrm6PreferredName || '',
-      dateOfBirth: employee?.ufCrm6PersonalBirthday || '',
-      email: employee?.ufCrm6Email || [],
-      phone: employee?.ufCrm6PersonalMobile || [],
-      address: employee?.ufCrm6Address || '',
-      position: employee?.ufCrm6WorkPosition || '',
-      subsidiary: employee?.ufCrm6Subsidiary || '',
-      employmentStatus: employee?.ufCrm6EmploymentStatus || 'Y',
-      hireDate: employee?.ufCrm6EmploymentStartDate || '',
-      employmentType: employee?.ufCrm6EmploymentType || '',
-      shift: employee?.ufCrm6Shift || '',
-      ptoDays: employee?.ufCrm6PtoDays || '',
-      healthInsurance: employee?.ufCrm6HealthInsurance || 0,
-      has401k: employee?.ufCrm_6_401K_ENROLLMENT || 0,
-      educationLevel: employee?.ufCrm6EducationLevel || '',
-      schoolName: employee?.ufCrm6SchoolName || '',
-      graduationYear: employee?.ufCrm6GraduationYear || '',
-      fieldOfStudy: employee?.ufCrm6FieldOfStudy || '',
-      skills: employee?.ufCrm6Skills || '',
-      certifications: employee?.ufCrm6Certifications || '',
-      softwareExperience: employee?.ufCrm6SoftwareExperience || '',
-      equipmentAssigned: employee?.ufCrm6EquipmentAssigned || [],
-      additionalInfo: employee?.ufCrm6AdditionalInfo || '',
-    };
-    setEditedData(JSON.parse(JSON.stringify(initialData)));
+    if (!employee) return;
+    setFormData({
+      firstName: employee.ufCrm6Name || '',
+      middleName: employee.ufCrm6SecondName || '',
+      lastName: employee.ufCrm6LastName || '',
+      preferredName: employee.ufCrm6PreferredName || '',
+      dateOfBirth: employee.ufCrm6PersonalBirthday || '',
+      email: employee.ufCrm6Email || [],
+      phone: employee.ufCrm6PersonalMobile || [],
+      address: employee.ufCrm6Address || '',
+      badgeNumber: employee.ufCrm6BadgeNumber || '',
+      position: employee.ufCrm6WorkPosition || '',
+      subsidiary: employee.ufCrm6Subsidiary || '',
+      employmentStatus: employee.ufCrm6EmploymentStatus || 'Y',
+      hireDate: employee.ufCrm6EmploymentStartDate || '',
+      employmentType: employee.ufCrm6EmploymentType || '',
+      shift: employee.ufCrm6Shift || '',
+      ssn: employee.ufCrm6Ssn || '',
+      ptoDays: employee.ufCrm6PtoDays || '',
+      healthInsurance: employee.ufCrm6HealthInsurance || 0,
+      has401k: employee.ufCrm_6_401K_ENROLLMENT || 0,
+      educationLevel: employee.ufCrm6EducationLevel || '',
+      schoolName: employee.ufCrm6SchoolName || '',
+      graduationYear: employee.ufCrm6GraduationYear || '',
+      fieldOfStudy: employee.ufCrm6FieldOfStudy || '',
+      skills: employee.ufCrm6Skills || '',
+      certifications: employee.ufCrm6Certifications || '',
+      softwareExperience: employee.ufCrm6SoftwareExperience || '',
+      equipmentAssigned: employee.ufCrm6EquipmentAssigned || [],
+      additionalInfo: employee.ufCrm6AdditionalInfo || '',
+    });
     setIsEditing(true);
   };
 
-  const handleFieldChange = (field: keyof EmployeeFormData, value: any) => {
-    setEditedData(prev => ({ ...prev, [field]: value }));
-
-    // Clear error for this field
-    setValidationErrors(prev => {
-      const newErrors = { ...prev };
-      delete newErrors[field];
-      return newErrors;
-    });
-  };
-
   const handleSave = () => {
-    // Validate all fields
-    const validation = employeeSchema.safeParse(editedData);
-
-    if (!validation.success) {
-      // Show validation errors
-      const newErrors: Record<string, string> = {};
-      validation.error.errors.forEach((err) => {
-        if (err.path[0]) {
-          newErrors[err.path[0] as string] = err.message;
-        }
+    const result = employeeSchema.safeParse(formData);
+    if (!result.success) {
+      const errors: Record<string, string> = {};
+      result.error.errors.forEach(err => {
+        if (err.path[0]) errors[err.path[0].toString()] = err.message;
       });
-      setValidationErrors(newErrors);
+      setValidationErrors(errors);
       return;
     }
-
-    // All valid - submit
-    updateMutation.mutate(validation.data);
+    setValidationErrors({});
+    updateMutation.mutate(formData);
   };
 
   const handleCancel = () => {
     setIsEditing(false);
-    setEditedData({});
     setValidationErrors({});
+    setFormData({});
   };
 
-  const tabs = [
-    { id: 'personal', label: 'Personal Information', icon: User },
-    { id: 'employment', label: 'Employment Details', icon: Briefcase },
-    { id: 'compensation', label: 'Compensation & Benefits', icon: DollarSign },
-    { id: 'education', label: 'Education & Skills', icon: GraduationCap },
-    { id: 'it', label: 'IT & Equipment', icon: Shield },
-    { id: 'documents', label: 'Documents & Compliance', icon: FileText },
-    { id: 'history', label: 'History & Notes', icon: Clock },
-  ];
-
-  if (!employeeId) {
-    return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">Employee ID is required.</p>
-      </div>
-    );
-  }
+  const updateField = (field: keyof EmployeeFormData, value: any) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+    if (validationErrors[field]) {
+      setValidationErrors(prev => {
+        const next = { ...prev };
+        delete next[field];
+        return next;
+      });
+    }
+  };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-hartzell-blue border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading employee details...</p>
-        </div>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-sm text-slate-600">Loading...</div>
       </div>
     );
   }
 
   if (error || !employee) {
     return (
-      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-        <p className="text-red-800">Failed to load employee. {(error as Error)?.message}</p>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-sm text-red-600">Error: {(error as Error)?.message || 'Not found'}</div>
       </div>
     );
   }
 
-  const displayName = `${employee.ufCrm6Name} ${employee.ufCrm6LastName}`.trim();
+  const currentData = isEditing ? formData : {
+    firstName: employee.ufCrm6Name,
+    middleName: employee.ufCrm6SecondName,
+    lastName: employee.ufCrm6LastName,
+    preferredName: employee.ufCrm6PreferredName,
+    dateOfBirth: employee.ufCrm6PersonalBirthday,
+    email: employee.ufCrm6Email,
+    phone: employee.ufCrm6PersonalMobile,
+    address: employee.ufCrm6Address,
+    badgeNumber: employee.ufCrm6BadgeNumber,
+    position: employee.ufCrm6WorkPosition,
+    subsidiary: employee.ufCrm6Subsidiary,
+    employmentStatus: employee.ufCrm6EmploymentStatus,
+    hireDate: employee.ufCrm6EmploymentStartDate,
+    employmentType: employee.ufCrm6EmploymentType,
+    shift: employee.ufCrm6Shift,
+    ssn: employee.ufCrm6Ssn,
+    ptoDays: employee.ufCrm6PtoDays,
+    healthInsurance: employee.ufCrm6HealthInsurance,
+    has401k: employee.ufCrm_6_401K_ENROLLMENT,
+    educationLevel: employee.ufCrm6EducationLevel,
+    schoolName: employee.ufCrm6SchoolName,
+    graduationYear: employee.ufCrm6GraduationYear,
+    fieldOfStudy: employee.ufCrm6FieldOfStudy,
+    skills: employee.ufCrm6Skills,
+    certifications: employee.ufCrm6Certifications,
+    softwareExperience: employee.ufCrm6SoftwareExperience,
+    equipmentAssigned: employee.ufCrm6EquipmentAssigned,
+    additionalInfo: employee.ufCrm6AdditionalInfo,
+  };
+
+  // Compact field component
+  const Field = ({ label, value, name, type = 'text', required = false, options, colSpan = 1 }: any) => {
+    const hasError = validationErrors[name];
+    const spanClass = colSpan === 2 ? 'col-span-2' : '';
+
+    if (!isEditing) {
+      return (
+        <div className={`mb-2 ${spanClass}`}>
+          <label className="block text-xs font-medium text-slate-500 mb-0.5">{label}</label>
+          <div className="text-sm text-slate-900">{value || <span className="text-slate-400 text-xs">—</span>}</div>
+        </div>
+      );
+    }
+
+    if (type === 'select') {
+      return (
+        <div className={`mb-2 ${spanClass}`}>
+          <label className="block text-xs font-medium text-slate-600 mb-0.5">
+            {label} {required && <span className="text-red-500">*</span>}
+          </label>
+          <select
+            value={value || ''}
+            onChange={(e) => updateField(name, e.target.value)}
+            className={`w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${hasError ? 'border-red-500' : 'border-slate-300'}`}
+          >
+            {options.map((opt: any) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          {hasError && <p className="text-xs text-red-500 mt-0.5">{hasError}</p>}
+        </div>
+      );
+    }
+
+    if (type === 'textarea') {
+      return (
+        <div className={`mb-2 ${spanClass}`}>
+          <label className="block text-xs font-medium text-slate-600 mb-0.5">
+            {label} {required && <span className="text-red-500">*</span>}
+          </label>
+          <textarea
+            value={value || ''}
+            onChange={(e) => updateField(name, e.target.value)}
+            rows={2}
+            className={`w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${hasError ? 'border-red-500' : 'border-slate-300'}`}
+          />
+          {hasError && <p className="text-xs text-red-500 mt-0.5">{hasError}</p>}
+        </div>
+      );
+    }
+
+    if (type === 'number') {
+      return (
+        <div className={`mb-2 ${spanClass}`}>
+          <label className="block text-xs font-medium text-slate-600 mb-0.5">
+            {label} {required && <span className="text-red-500">*</span>}
+          </label>
+          <input
+            type="number"
+            value={value || ''}
+            onChange={(e) => updateField(name, parseInt(e.target.value) || 0)}
+            className={`w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${hasError ? 'border-red-500' : 'border-slate-300'}`}
+          />
+          {hasError && <p className="text-xs text-red-500 mt-0.5">{hasError}</p>}
+        </div>
+      );
+    }
+
+    return (
+      <div className={`mb-2 ${spanClass}`}>
+        <label className="block text-xs font-medium text-slate-600 mb-0.5">
+          {label} {required && <span className="text-red-500">*</span>}
+        </label>
+        <input
+          type={type}
+          value={type === 'password' && !isEditing ? '***-**-****' : (Array.isArray(value) ? value[0] || '' : value || '')}
+          onChange={(e) => {
+            if (name === 'email' || name === 'phone') {
+              updateField(name, [e.target.value]);
+            } else {
+              updateField(name, e.target.value);
+            }
+          }}
+          className={`w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${hasError ? 'border-red-500' : 'border-slate-300'}`}
+        />
+        {hasError && <p className="text-xs text-red-500 mt-0.5">{hasError}</p>}
+      </div>
+    );
+  };
 
   return (
-    <div>
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <button
-            onClick={() => router.back()}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">{displayName}</h1>
-            <p className="text-gray-600 mt-1">
-              {employee.ufCrm6WorkPosition} • Badge #{employee.ufCrm6BadgeNumber}
-            </p>
+    <div className="min-h-screen bg-slate-50">
+      {/* Compact enterprise header */}
+      <div className="bg-gradient-to-r from-slate-700 to-slate-800 border-b border-slate-900 shadow">
+        <div className="max-w-7xl mx-auto px-4 py-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-lg font-semibold text-white">
+                {currentData.firstName} {currentData.lastName}
+              </h1>
+              <p className="text-xs text-slate-300 mt-0.5">
+                #{currentData.badgeNumber} · {currentData.position} · {currentData.employmentStatus === 'Y' ? 'Active' : 'Inactive'}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {!isEditing ? (
+                <button
+                  onClick={handleEdit}
+                  className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded shadow hover:bg-blue-700 transition-colors"
+                >
+                  Edit
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={handleCancel}
+                    className="px-3 py-1.5 bg-slate-500 text-white text-xs font-medium rounded hover:bg-slate-600 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={updateMutation.isPending}
+                    className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition-colors disabled:opacity-50"
+                  >
+                    {updateMutation.isPending ? 'Saving...' : 'Save'}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
-
-        <div className="flex gap-2">
-          {isEditing ? (
-            <>
-              <button
-                onClick={handleCancel}
-                className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
-              >
-                <X className="w-4 h-4" />
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={updateMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 bg-hartzell-blue text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                <Save className="w-4 h-4" />
-                {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={handleEdit}
-              className="flex items-center gap-2 px-4 py-2 bg-hartzell-blue text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Edit className="w-4 h-4" />
-              Edit Employee
-            </button>
-          )}
-        </div>
       </div>
 
-      {/* Status Badge */}
-      <div className="mb-6">
-        {employee.ufCrm6EmploymentStatus === 'Y' ? (
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-            <CheckCircle className="w-4 h-4 mr-2" />
-            Active Employee
-          </span>
-        ) : (
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-800">
-            <XCircle className="w-4 h-4 mr-2" />
-            Inactive
-          </span>
-        )}
-      </div>
-
-      {/* Validation Errors Banner */}
+      {/* Validation errors */}
       {Object.keys(validationErrors).length > 0 && (
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <h3 className="text-red-800 font-medium mb-2">Please fix the following errors:</h3>
-              <ul className="list-disc list-inside text-red-700 text-sm space-y-1">
-                {Object.entries(validationErrors).map(([field, error]) => (
-                  <li key={field}>{error}</li>
-                ))}
-              </ul>
-            </div>
+        <div className="max-w-7xl mx-auto px-4 pt-3">
+          <div className="bg-red-50 border border-red-200 rounded p-2">
+            <p className="text-xs font-medium text-red-800">Fix errors:</p>
+            <ul className="mt-1 text-xs text-red-700 list-disc list-inside">
+              {Object.entries(validationErrors).map(([field, error]) => (
+                <li key={field}>{field}: {error}</li>
+              ))}
+            </ul>
           </div>
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
-        <div className="flex gap-4 overflow-x-auto">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? 'border-hartzell-blue text-hartzell-blue font-medium'
-                    : 'border-transparent text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Tab Content */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        {activeTab === 'personal' && (
-          <PersonalTab
-            employee={employee}
-            isEditing={isEditing}
-            editedData={editedData}
-            errors={validationErrors}
-            onChange={handleFieldChange}
-          />
-        )}
-        {activeTab === 'employment' && (
-          <EmploymentTab
-            employee={employee}
-            isEditing={isEditing}
-            editedData={editedData}
-            errors={validationErrors}
-            onChange={handleFieldChange}
-          />
-        )}
-        {activeTab === 'compensation' && (
-          <CompensationTab
-            employee={employee}
-            isEditing={isEditing}
-            editedData={editedData}
-            errors={validationErrors}
-            onChange={handleFieldChange}
-          />
-        )}
-        {activeTab === 'education' && (
-          <EducationTab
-            employee={employee}
-            isEditing={isEditing}
-            editedData={editedData}
-            errors={validationErrors}
-            onChange={handleFieldChange}
-          />
-        )}
-        {activeTab === 'it' && (
-          <ITTab
-            employee={employee}
-            isEditing={isEditing}
-            editedData={editedData}
-            errors={validationErrors}
-            onChange={handleFieldChange}
-          />
-        )}
-        {activeTab === 'documents' && <DocumentsTab employee={employee} />}
-        {activeTab === 'history' && <HistoryTab employee={employee} />}
-      </div>
-    </div>
-  );
-}
-
-// Helper component for form fields
-function FormField({ label, value, icon: Icon, isEditing, type = 'text', error, onChange, readonly = false, sensitive = false, placeholder = '' }: any) {
-  return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
-        {label}
-        {sensitive && <span className="ml-2 text-xs text-red-600">(Sensitive)</span>}
-        {readonly && <span className="ml-2 text-xs text-gray-500">(Read-only)</span>}
-      </label>
-      <div className="relative">
-        <Icon className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-        {isEditing && !readonly ? (
-          <>
-            <input
-              type={type}
-              value={value || ''}
-              onChange={(e) => onChange(type === 'number' ? parseInt(e.target.value) || 0 : e.target.value)}
-              placeholder={placeholder}
-              className={`w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-hartzell-blue focus:border-transparent ${
-                error ? 'border-red-500' : 'border-gray-300'
-              }`}
-            />
-            {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
-          </>
-        ) : (
-          <div className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900">
-            {sensitive && value ? '***-**-****' : (value || 'N/A')}
+      {/* Compact content */}
+      <div className="max-w-7xl mx-auto px-4 py-3">
+        {/* Personal Information */}
+        <Section title="Personal Information" isOpen={openSections.personal} onToggle={() => toggleSection('personal')}>
+          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+            <Field label="First Name" value={currentData.firstName} name="firstName" required />
+            <Field label="Middle Name" value={currentData.middleName} name="middleName" />
+            <Field label="Last Name" value={currentData.lastName} name="lastName" required />
+            <Field label="Preferred Name" value={currentData.preferredName} name="preferredName" />
+            <Field label="Date of Birth" value={currentData.dateOfBirth} name="dateOfBirth" type="date" required />
+            <Field label="Email" value={currentData.email?.[0]} name="email" type="email" required />
+            <Field label="Phone" value={currentData.phone?.[0]} name="phone" type="tel" />
+            <Field label="Address" value={currentData.address} name="address" colSpan={2} />
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
+        </Section>
 
-// Tab Components
-function PersonalTab({ employee, isEditing, editedData, errors, onChange }: any) {
-  return (
-    <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Personal Information</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <FormField
-          label="First Name"
-          value={isEditing ? editedData.firstName : employee.ufCrm6Name}
-          icon={User}
-          isEditing={isEditing}
-          error={errors.firstName}
-          onChange={(v: string) => onChange('firstName', v)}
-        />
-        <FormField
-          label="Middle Name"
-          value={isEditing ? editedData.middleName : employee.ufCrm6SecondName}
-          icon={User}
-          isEditing={isEditing}
-          error={errors.middleName}
-          onChange={(v: string) => onChange('middleName', v)}
-        />
-        <FormField
-          label="Last Name"
-          value={isEditing ? editedData.lastName : employee.ufCrm6LastName}
-          icon={User}
-          isEditing={isEditing}
-          error={errors.lastName}
-          onChange={(v: string) => onChange('lastName', v)}
-        />
-        <FormField
-          label="Preferred Name"
-          value={isEditing ? editedData.preferredName : employee.ufCrm6PreferredName}
-          icon={User}
-          isEditing={isEditing}
-          error={errors.preferredName}
-          onChange={(v: string) => onChange('preferredName', v)}
-        />
-        <FormField
-          label="Date of Birth"
-          value={isEditing ? editedData.dateOfBirth : employee.ufCrm6PersonalBirthday}
-          icon={Calendar}
-          isEditing={isEditing}
-          type="date"
-          error={errors.dateOfBirth}
-          onChange={(v: string) => onChange('dateOfBirth', v)}
-        />
-        <FormField
-          label="Social Security Number"
-          value={employee.ufCrm6Ssn}
-          icon={Shield}
-          isEditing={false}
-          readonly={true}
-          sensitive={true}
-        />
-        <FormField
-          label="Email"
-          value={isEditing ? (editedData.email?.[0] || '') : (employee.ufCrm6Email?.[0] || '')}
-          icon={Mail}
-          isEditing={isEditing}
-          type="email"
-          error={errors.email}
-          onChange={(v: string) => onChange('email', [v])}
-          placeholder="employee@hartzell.com"
-        />
-        <FormField
-          label="Phone"
-          value={isEditing ? (editedData.phone?.[0] || '') : (employee.ufCrm6PersonalMobile?.[0] || '')}
-          icon={Phone}
-          isEditing={isEditing}
-          type="tel"
-          error={errors.phone}
-          onChange={(v: string) => onChange('phone', [v])}
-          placeholder="(555) 123-4567"
-        />
-      </div>
-      <div className="pt-6 border-t border-gray-200">
-        <h4 className="text-md font-medium text-gray-900 mb-4">Address</h4>
-        <FormField
-          label="Street Address"
-          value={isEditing ? editedData.address : employee.ufCrm6Address}
-          icon={MapPin}
-          isEditing={isEditing}
-          error={errors.address}
-          onChange={(v: string) => onChange('address', v)}
-          placeholder="123 Main St, City, State ZIP"
-        />
-      </div>
-    </div>
-  );
-}
-
-function EmploymentTab({ employee, isEditing, editedData, errors, onChange }: any) {
-  return (
-    <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Employment Details</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <FormField
-          label="Badge Number"
-          value={employee.ufCrm6BadgeNumber}
-          icon={User}
-          isEditing={false}
-          readonly={true}
-        />
-        <FormField
-          label="Position"
-          value={isEditing ? editedData.position : employee.ufCrm6WorkPosition}
-          icon={Briefcase}
-          isEditing={isEditing}
-          error={errors.position}
-          onChange={(v: string) => onChange('position', v)}
-        />
-        <FormField
-          label="Subsidiary/Department"
-          value={isEditing ? editedData.subsidiary : employee.ufCrm6Subsidiary}
-          icon={Building}
-          isEditing={isEditing}
-          error={errors.subsidiary}
-          onChange={(v: string) => onChange('subsidiary', v)}
-        />
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Employment Status</label>
-          <div className="relative">
-            <CheckCircle className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-            {isEditing ? (
-              <select
-                value={editedData.employmentStatus || 'Y'}
-                onChange={(e) => onChange('employmentStatus', e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-hartzell-blue focus:border-transparent"
-              >
-                <option value="Y">Active</option>
-                <option value="N">Inactive</option>
-              </select>
-            ) : (
-              <div className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900">
-                {employee.ufCrm6EmploymentStatus === 'Y' ? 'Active' : 'Inactive'}
-              </div>
-            )}
-          </div>
-        </div>
-        <FormField
-          label="Employment Type"
-          value={isEditing ? editedData.employmentType : employee.ufCrm6EmploymentType}
-          icon={Briefcase}
-          isEditing={isEditing}
-          error={errors.employmentType}
-          onChange={(v: string) => onChange('employmentType', v)}
-          placeholder="Full-time, Part-time, etc."
-        />
-        <FormField
-          label="Shift"
-          value={isEditing ? editedData.shift : employee.ufCrm6Shift}
-          icon={Clock}
-          isEditing={isEditing}
-          error={errors.shift}
-          onChange={(v: string) => onChange('shift', v)}
-          placeholder="Day, Night, etc."
-        />
-        <FormField
-          label="Hire Date"
-          value={isEditing ? editedData.hireDate : employee.ufCrm6EmploymentStartDate}
-          icon={Calendar}
-          isEditing={isEditing}
-          type="date"
-          error={errors.hireDate}
-          onChange={(v: string) => onChange('hireDate', v)}
-        />
-      </div>
-    </div>
-  );
-}
-
-function CompensationTab({ employee, isEditing, editedData, errors, onChange }: any) {
-  return (
-    <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Compensation & Benefits</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <FormField
-          label="PTO Days Allocated"
-          value={isEditing ? editedData.ptoDays : employee.ufCrm6PtoDays}
-          icon={Calendar}
-          isEditing={isEditing}
-          error={errors.ptoDays}
-          onChange={(v: string) => onChange('ptoDays', v)}
-          placeholder="15"
-        />
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Health Insurance</label>
-          <div className="relative">
-            <Award className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-            {isEditing ? (
-              <select
-                value={editedData.healthInsurance || 0}
-                onChange={(e) => onChange('healthInsurance', parseInt(e.target.value))}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-hartzell-blue focus:border-transparent"
-              >
-                <option value={0}>Not Enrolled</option>
-                <option value={1}>Enrolled</option>
-              </select>
-            ) : (
-              <div className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900">
-                {employee.ufCrm6HealthInsurance === 1 ? 'Enrolled' : 'Not Enrolled'}
-              </div>
-            )}
-          </div>
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">401(k) Enrollment</label>
-          <div className="relative">
-            <CreditCard className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-            {isEditing ? (
-              <select
-                value={editedData.has401k || 0}
-                onChange={(e) => onChange('has401k', parseInt(e.target.value))}
-                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-hartzell-blue focus:border-transparent"
-              >
-                <option value={0}>Not Enrolled</option>
-                <option value={1}>Enrolled</option>
-              </select>
-            ) : (
-              <div className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900">
-                {employee.ufCrm_6_401K_ENROLLMENT === 1 ? 'Enrolled' : 'Not Enrolled'}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EducationTab({ employee, isEditing, editedData, errors, onChange }: any) {
-  return (
-    <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Education & Skills</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <FormField
-          label="Education Level"
-          value={isEditing ? editedData.educationLevel : employee.ufCrm6EducationLevel}
-          icon={GraduationCap}
-          isEditing={isEditing}
-          error={errors.educationLevel}
-          onChange={(v: string) => onChange('educationLevel', v)}
-          placeholder="High School, Bachelor's, etc."
-        />
-        <FormField
-          label="School Name"
-          value={isEditing ? editedData.schoolName : employee.ufCrm6SchoolName}
-          icon={Building}
-          isEditing={isEditing}
-          error={errors.schoolName}
-          onChange={(v: string) => onChange('schoolName', v)}
-        />
-        <FormField
-          label="Graduation Year"
-          value={isEditing ? editedData.graduationYear : employee.ufCrm6GraduationYear}
-          icon={Calendar}
-          isEditing={isEditing}
-          error={errors.graduationYear}
-          onChange={(v: string) => onChange('graduationYear', v)}
-          placeholder="2020"
-        />
-        <FormField
-          label="Field of Study"
-          value={isEditing ? editedData.fieldOfStudy : employee.ufCrm6FieldOfStudy}
-          icon={GraduationCap}
-          isEditing={isEditing}
-          error={errors.fieldOfStudy}
-          onChange={(v: string) => onChange('fieldOfStudy', v)}
-        />
-      </div>
-      <div className="pt-6 border-t border-gray-200 space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Skills</label>
-          {isEditing ? (
-            <textarea
-              value={editedData.skills || ''}
-              onChange={(e) => onChange('skills', e.target.value)}
-              rows={3}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-hartzell-blue focus:border-transparent ${
-                errors.skills ? 'border-red-500' : 'border-gray-300'
-              }`}
-              placeholder="List skills separated by commas"
+        {/* Employment Details */}
+        <Section title="Employment Details" isOpen={openSections.employment} onToggle={() => toggleSection('employment')}>
+          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+            <Field label="Badge Number" value={currentData.badgeNumber} name="badgeNumber" />
+            <Field label="Position" value={currentData.position} name="position" required />
+            <Field label="Department" value={currentData.subsidiary} name="subsidiary" />
+            <Field
+              label="Status"
+              value={currentData.employmentStatus}
+              name="employmentStatus"
+              type="select"
+              options={[
+                { value: 'Y', label: 'Active' },
+                { value: 'N', label: 'Inactive' }
+              ]}
             />
-          ) : (
-            <div className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 whitespace-pre-wrap">
-              {employee.ufCrm6Skills || 'N/A'}
-            </div>
-          )}
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Certifications</label>
-          {isEditing ? (
-            <textarea
-              value={editedData.certifications || ''}
-              onChange={(e) => onChange('certifications', e.target.value)}
-              rows={3}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-hartzell-blue focus:border-transparent ${
-                errors.certifications ? 'border-red-500' : 'border-gray-300'
-              }`}
-              placeholder="List certifications"
+            <Field label="Hire Date" value={currentData.hireDate} name="hireDate" type="date" />
+            <Field
+              label="Type"
+              value={currentData.employmentType}
+              name="employmentType"
+              type="select"
+              options={[
+                { value: '', label: '—' },
+                { value: 'Full-time', label: 'Full-time' },
+                { value: 'Part-time', label: 'Part-time' },
+                { value: 'Contract', label: 'Contract' },
+                { value: 'Temporary', label: 'Temporary' }
+              ]}
             />
-          ) : (
-            <div className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 whitespace-pre-wrap">
-              {employee.ufCrm6Certifications || 'N/A'}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ITTab({ employee, isEditing, editedData, errors, onChange }: any) {
-  return (
-    <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">IT & Equipment</h3>
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Software Experience</label>
-          {isEditing ? (
-            <textarea
-              value={editedData.softwareExperience || ''}
-              onChange={(e) => onChange('softwareExperience', e.target.value)}
-              rows={4}
-              className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-hartzell-blue focus:border-transparent ${
-                errors.softwareExperience ? 'border-red-500' : 'border-gray-300'
-              }`}
-              placeholder="List software and tools"
+            <Field
+              label="Shift"
+              value={currentData.shift}
+              name="shift"
+              type="select"
+              options={[
+                { value: '', label: '—' },
+                { value: 'Day', label: 'Day' },
+                { value: 'Night', label: 'Night' },
+                { value: 'Swing', label: 'Swing' },
+                { value: 'Flexible', label: 'Flexible' }
+              ]}
             />
-          ) : (
-            <div className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-gray-900 whitespace-pre-wrap">
-              {employee.ufCrm6SoftwareExperience || 'N/A'}
-            </div>
-          )}
-        </div>
-        <FormField
-          label="Equipment Assigned"
-          value={(isEditing ? editedData.equipmentAssigned : employee.ufCrm6EquipmentAssigned)?.join(', ') || 'None'}
-          icon={Package}
-          isEditing={false}
-          readonly={true}
-        />
-      </div>
-    </div>
-  );
-}
+          </div>
+        </Section>
 
-function DocumentsTab({ employee }: any) {
-  return (
-    <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">Documents & Compliance</h3>
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <p className="text-blue-800 text-sm">
-          Document management integration coming soon. This will show all signed documents, pending assignments, and compliance status.
-        </p>
-      </div>
-    </div>
-  );
-}
+        {/* Compensation & Benefits */}
+        <Section title="Compensation & Benefits" isOpen={openSections.compensation} onToggle={() => toggleSection('compensation')}>
+          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+            <Field label="SSN" value={currentData.ssn} name="ssn" type="password" />
+            <Field label="PTO Days" value={currentData.ptoDays} name="ptoDays" />
+            <Field
+              label="Health Insurance"
+              value={currentData.healthInsurance}
+              name="healthInsurance"
+              type="select"
+              options={[
+                { value: 0, label: 'Not Enrolled' },
+                { value: 1, label: 'Enrolled' }
+              ]}
+            />
+            <Field
+              label="401(k)"
+              value={currentData.has401k}
+              name="has401k"
+              type="select"
+              options={[
+                { value: 0, label: 'Not Enrolled' },
+                { value: 1, label: 'Enrolled' }
+              ]}
+            />
+          </div>
+        </Section>
 
-function HistoryTab({ employee }: any) {
-  return (
-    <div className="space-y-6">
-      <h3 className="text-lg font-semibold text-gray-900 mb-4">History & Audit Log</h3>
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <p className="text-blue-800 text-sm">
-          Employee history and audit log coming soon. This will show all changes made to this employee record, including who made the changes and when.
-        </p>
+        {/* Education & Skills */}
+        <Section title="Education & Skills" isOpen={openSections.education} onToggle={() => toggleSection('education')}>
+          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+            <Field
+              label="Education Level"
+              value={currentData.educationLevel}
+              name="educationLevel"
+              type="select"
+              options={[
+                { value: '', label: '—' },
+                { value: 'High School', label: 'High School' },
+                { value: 'Associate', label: 'Associate' },
+                { value: 'Bachelor', label: "Bachelor's" },
+                { value: 'Master', label: "Master's" },
+                { value: 'Doctorate', label: 'Doctorate' }
+              ]}
+            />
+            <Field label="School" value={currentData.schoolName} name="schoolName" />
+            <Field label="Graduation Year" value={currentData.graduationYear} name="graduationYear" />
+            <Field label="Field of Study" value={currentData.fieldOfStudy} name="fieldOfStudy" colSpan={2} />
+            <Field label="Skills" value={currentData.skills} name="skills" type="textarea" colSpan={3} />
+            <Field label="Certifications" value={currentData.certifications} name="certifications" type="textarea" colSpan={3} />
+          </div>
+        </Section>
+
+        {/* IT & Equipment */}
+        <Section title="IT & Equipment" isOpen={openSections.it} onToggle={() => toggleSection('it')}>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+            <Field label="Software Experience" value={currentData.softwareExperience} name="softwareExperience" type="textarea" colSpan={2} />
+            <Field label="Equipment Assigned" value={currentData.equipmentAssigned?.join(', ')} name="equipmentAssigned" type="textarea" colSpan={2} />
+          </div>
+        </Section>
+
+        {/* Additional Information */}
+        <Section title="Additional Information" isOpen={openSections.additional} onToggle={() => toggleSection('additional')}>
+          <Field label="Notes" value={currentData.additionalInfo} name="additionalInfo" type="textarea" colSpan={1} />
+        </Section>
       </div>
     </div>
   );
