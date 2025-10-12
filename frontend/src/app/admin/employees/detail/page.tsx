@@ -562,7 +562,35 @@ export default function EmployeeDetailPage() {
   const updateMutation = useMutation({
     mutationFn: async (updates: Partial<EmployeeFormData>) => {
       if (!bitrixId) throw new Error('No employee ID');
-      const { badgeNumber, ...updatePayload } = updates;
+      const { badgeNumber, ...rest } = updates;
+
+      // Transform data for backend API
+      const updatePayload: any = { ...rest };
+
+      // Convert array fields to comma-separated strings for backend
+      if (Array.isArray(updatePayload.skills)) {
+        updatePayload.skills = updatePayload.skills.join(', ');
+      }
+      if (Array.isArray(updatePayload.certifications)) {
+        updatePayload.certifications = updatePayload.certifications.join(', ');
+      }
+      if (Array.isArray(updatePayload.softwareExperience)) {
+        updatePayload.softwareExperience = updatePayload.softwareExperience.join(', ');
+      }
+
+      // Convert healthInsurance and has401k to numbers (or undefined if empty)
+      if (updatePayload.healthInsurance === '' || updatePayload.healthInsurance === null) {
+        delete updatePayload.healthInsurance;
+      } else if (typeof updatePayload.healthInsurance === 'string') {
+        updatePayload.healthInsurance = parseInt(updatePayload.healthInsurance) || undefined;
+      }
+
+      if (updatePayload.has401k === '' || updatePayload.has401k === null) {
+        delete updatePayload.has401k;
+      } else if (typeof updatePayload.has401k === 'string') {
+        updatePayload.has401k = parseInt(updatePayload.has401k) || undefined;
+      }
+
       return api.updateEmployee(parseInt(bitrixId), updatePayload);
     },
     onMutate: async (updates) => {

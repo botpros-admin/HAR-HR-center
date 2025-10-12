@@ -339,10 +339,11 @@ adminRoutes.patch('/employee/:bitrixId', async (c) => {
     const bitrixFields: Record<string, any> = {};
     for (const [key, value] of Object.entries(validatedData)) {
       const bitrixKey = FIELD_MAP[key];
-      if (!bitrixKey) {
-        return c.json({ error: `Unknown field: ${key}` }, 400);
+      if (bitrixKey) {
+        // Only map known fields to Bitrix format
+        bitrixFields[bitrixKey] = value;
       }
-      bitrixFields[bitrixKey] = value;
+      // Skip unknown fields (they're allowed by .passthrough() but won't be sent to Bitrix)
     }
 
     // Fetch current employee data for diff tracking
