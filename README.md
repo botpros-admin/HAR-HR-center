@@ -97,6 +97,19 @@ Hosting:     Cloudflare Pages + Workers
 - ✅ Assignment workflow
 - ✅ Status tracking in D1 database
 
+### 5. E-Signature System (White-Label)
+- ✅ Native HTML5 canvas signature capture
+- ✅ Typed signature with cursive font rendering
+- ✅ pdf-lib integration for PDF manipulation
+- ✅ Multi-page PDF support with field overlays
+- ✅ Signature field positioning system
+- ✅ Signed document storage in R2
+- ✅ Automatic Bitrix24 file upload
+- ✅ Timeline entry on signature completion
+- ✅ Audit logging with serial numbers
+- ✅ Mobile-responsive signature interface
+- ✅ Touch and mouse input support
+
 ---
 
 ## 📁 Project Structure
@@ -106,7 +119,6 @@ HR Center/
 ├── README.md                    # This file
 ├── SPECIFICATION.md             # Technical specification
 ├── DEPLOYMENT_GUIDE.md          # Deployment procedures
-├── OPENSIGN_INTEGRATION.md      # E-signature guide (NOT IMPLEMENTED)
 │
 ├── cloudflare-app/              # Backend (Cloudflare Workers)
 │   ├── workers/
@@ -116,12 +128,13 @@ HR Center/
 │   │   ├── routes/             # API route handlers
 │   │   │   ├── auth.ts        # Authentication endpoints
 │   │   │   ├── employee.ts    # Employee data endpoints
-│   │   │   ├── signatures.ts  # Signature workflow (placeholder)
+│   │   │   ├── signatures.ts  # Native signature workflow (pdf-lib)
 │   │   │   └── admin.ts       # Admin endpoints
 │   │   └── lib/
 │   │       ├── auth.ts        # Session management
 │   │       ├── bitrix.ts      # Bitrix24 API client
-│   │       └── captcha.ts     # hCaptcha verification
+│   │       ├── captcha.ts     # hCaptcha verification
+│   │       └── pdf-signer.ts  # pdf-lib signature integration
 │   ├── wrangler.toml           # Cloudflare configuration
 │   ├── DEPLOYMENT_GUIDE.md     # Backend deployment steps
 │   └── package.json
@@ -335,17 +348,15 @@ npm run dev  # Runs on http://localhost:3000
 
 ## 🐛 Known Limitations
 
-1. **No E-Signature System** - OpenSign integration was planned but NOT implemented. Placeholder code exists but is non-functional.
+1. **No Email Notifications** - No email service configured for password resets, document assignments, etc.
 
-2. **No Email Notifications** - No email service configured for password resets, document assignments, etc.
+2. **Single Admin Role** - No granular permissions (HR Specialist vs HR Admin vs Super Admin).
 
-3. **Single Admin Role** - No granular permissions (HR Specialist vs HR Admin vs Super Admin).
+3. **No Employee-Initiated Password Reset** - Admin must manually update credentials in D1.
 
-4. **No Employee-Initiated Password Reset** - Admin must manually update credentials in D1.
+4. **No Audit Trail UI** - Worker logs exist in Cloudflare dashboard but no admin interface for viewing.
 
-5. **No Audit Trail UI** - Worker logs exist in Cloudflare dashboard but no admin interface for viewing.
-
-6. **No Mobile App** - Web-only, though fully responsive.
+5. **No Mobile App** - Web-only, though fully responsive.
 
 ---
 
@@ -353,7 +364,6 @@ npm run dev  # Runs on http://localhost:3000
 
 - **SPECIFICATION.md** - Complete technical specification
 - **DEPLOYMENT_GUIDE.md** - Deployment procedures and troubleshooting
-- **OPENSIGN_INTEGRATION.md** - E-signature guide (NOT IMPLEMENTED - reference only)
 - **cloudflare-app/README.md** - Backend architecture details
 - **frontend/README.md** - Frontend architecture details
 
