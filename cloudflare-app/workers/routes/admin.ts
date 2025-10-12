@@ -88,7 +88,7 @@ const EmployeeUpdateSchema = z.object({
   middleName: z.string().max(100).optional(),
   lastName: z.string().min(1).max(100).optional(),
   preferredName: z.string().max(100).optional(),
-  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  dateOfBirth: z.string().regex(/^(\d{4}-\d{2}-\d{2}|)$/).optional(),
   email: z.array(z.string().email()).optional(),
   phone: z.array(z.string().regex(/^\+?[\d\s\-\(\)]+$/)).optional(),
   address: z.string().max(500).optional(),
@@ -97,7 +97,7 @@ const EmployeeUpdateSchema = z.object({
   position: z.string().min(1).max(200).optional(),
   subsidiary: z.string().max(200).optional(),
   employmentStatus: z.enum(['Y', 'N']).optional(),
-  hireDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  hireDate: z.string().regex(/^(\d{4}-\d{2}-\d{2}|)$/).optional(),
   employmentType: z.string().max(100).optional(),
   shift: z.string().max(100).optional(),
 
@@ -109,7 +109,7 @@ const EmployeeUpdateSchema = z.object({
   // Education & Skills
   educationLevel: z.string().max(100).optional(),
   schoolName: z.string().max(200).optional(),
-  graduationYear: z.string().regex(/^\d{4}$/).optional(),
+  graduationYear: z.string().regex(/^(\d{4}|)$/).optional(),
   fieldOfStudy: z.string().max(200).optional(),
   skills: z.string().max(1000).optional(),
   certifications: z.string().max(1000).optional(),
@@ -120,7 +120,7 @@ const EmployeeUpdateSchema = z.object({
 
   // Additional
   additionalInfo: z.string().max(5000).optional(),
-}).strict();
+}).passthrough(); // Allow extra fields not in schema (they'll just be ignored)
 
 // Admin endpoints (placeholder for future)
 adminRoutes.get('/stats', async (c) => {
