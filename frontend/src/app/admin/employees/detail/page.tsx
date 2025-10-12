@@ -3,9 +3,10 @@
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { useState, useCallback, useMemo, memo } from 'react';
+import { useState, useCallback, useMemo, memo, useEffect } from 'react';
 import { z } from 'zod';
 import TagInput from '@/components/TagInput';
+import { useGooglePlaces } from '@/hooks/useGooglePlaces';
 
 // Comprehensive validation schema for all 136 fields
 const employeeSchema = z.object({
@@ -24,6 +25,11 @@ const employeeSchema = z.object({
   officePhone: z.string().optional(),
   officeExtension: z.string().optional(),
   address: z.string().max(500).optional(),
+  addressLine1: z.string().max(200).optional(),
+  addressLine2: z.string().max(200).optional(),
+  city: z.string().max(100).optional(),
+  state: z.string().max(2).optional(),
+  zipCode: z.string().max(10).optional(),
   profilePhoto: z.string().optional(),
 
   // Emergency Contact (3 fields)
@@ -46,7 +52,7 @@ const employeeSchema = z.object({
   wcCode: z.number().optional(),
 
   // Compensation & Benefits (8 fields)
-  ssn: z.string().optional(),
+  ssn: z.string().regex(/^\d{3}-\d{2}-\d{4}$/, 'SSN must be exactly 9 digits (format: XXX-XX-XXXX)').optional(),
   ptoDays: z.string().max(10).optional(),
   healthInsurance: z.string().optional(),
   has401k: z.string().optional(),
@@ -330,6 +336,26 @@ function Section({ title, isOpen, onToggle, children }: { title: string; isOpen:
   );
 }
 
+// Helper function to format dates for display
+const formatDateForDisplay = (dateStr: string | undefined | null): string => {
+  if (!dateStr) return '';
+
+  // Handle ISO format: "1973-12-15T00:00:00+00:00"
+  let cleanDate = dateStr;
+  if (dateStr.includes('T')) {
+    cleanDate = dateStr.split('T')[0]; // Get "1973-12-15"
+  }
+
+  // Convert YYYY-MM-DD to MM/DD/YYYY
+  const parts = cleanDate.split('-');
+  if (parts.length === 3) {
+    const [year, month, day] = parts;
+    return `${month}/${day}/${year}`;
+  }
+
+  return cleanDate;
+};
+
 // Field component - EXTRACTED OUTSIDE to prevent recreation on every render
 const Field = memo(({ label, value, name, type = 'text', required = false, options, colSpan = 1, validationErrors, isEditing, showSSN, showBankAccount, showBankRouting, setShowSSN, setShowBankAccount, setShowBankRouting, handleFieldChange }: any) => {
   const hasError = validationErrors[name];
@@ -337,11 +363,30 @@ const Field = memo(({ label, value, name, type = 'text', required = false, optio
 
   // Display mode
   if (!isEditing) {
+    let displayValue = value;
+
+    // Format dates for display
+    if (type === 'date' && value) {
+      displayValue = formatDateForDisplay(value);
+    }
+    // Handle password fields
+    else if (type === 'password') {
+      displayValue = '***-**-****';
+    }
+    // Handle arrays
+    else if (Array.isArray(value)) {
+      displayValue = value[0] || '—';
+    }
+    // Handle empty values
+    else if (!value) {
+      displayValue = <span className="text-slate-400 text-xs">—</span>;
+    }
+
     return (
       <div className={`mb-2 ${spanClass}`}>
         <label className="block text-xs font-medium text-slate-500 mb-0.5">{label}</label>
         <div className="text-sm text-slate-900">
-          {type === 'password' ? '***-**-****' : (Array.isArray(value) ? value[0] || '—' : value || <span className="text-slate-400 text-xs">—</span>)}
+          {displayValue}
         </div>
       </div>
     );
@@ -512,6 +557,238 @@ const TagField = memo(({ label, value, name, colSpan = 1, validationErrors, isEd
   );
 });
 
+// AddressAutocompleteField component with Google Maps integration
+const AddressAutocompleteField = memo(({ label, value, name, required = false, colSpan = 1, validationErrors, isEditing, handleFieldChange, onPlaceSelected }: any) => {
+  const hasError = validationErrors[name];
+  const spanClass = colSpan === 2 ? 'col-span-2' : colSpan === 3 ? 'col-span-3' : '';
+
+  const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+  const addressInputRef = useGooglePlaces({
+    apiKey: googleMapsApiKey,
+    onPlaceSelected: (place) => {
+      if (onPlaceSelected) {
+        onPlaceSelected(place);
+      }
+    }
+  });
+
+  // Display mode
+  if (!isEditing) {
+    return (
+      <div className={`mb-2 ${spanClass}`}>
+        <label className="block text-xs font-medium text-slate-500 mb-0.5">{label}</label>
+        <div className="text-sm text-slate-900">
+          {value || <span className="text-slate-400 text-xs">—</span>}
+        </div>
+      </div>
+    );
+  }
+
+  // Edit mode with Google Maps autocomplete
+  return (
+    <div className={`mb-2 ${spanClass}`}>
+      <label className="block text-xs font-medium text-slate-600 mb-0.5">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <input
+        ref={addressInputRef}
+        type="text"
+        value={value || ''}
+        onChange={(e) => handleFieldChange(name, e.target.value)}
+        className={`w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${hasError ? 'border-red-500' : 'border-slate-300'}`}
+        placeholder="Start typing your address..."
+        autoComplete="off"
+      />
+      <p className="text-xs text-slate-500 mt-0.5">
+        💡 Start typing and select from dropdown to auto-fill city, state, and ZIP
+      </p>
+      {hasError && <p className="text-xs text-red-500 mt-0.5">{hasError}</p>}
+    </div>
+  );
+});
+
+// Phone Field component with auto-formatting (123-456-7890)
+const PhoneField = memo(({ label, value, name, required = false, validationErrors, isEditing, handleFieldChange }: any) => {
+  const hasError = validationErrors[name];
+  const [localValue, setLocalValue] = useState('');
+
+  // Sync local value with prop value
+  useEffect(() => {
+    setLocalValue(value || '');
+  }, [value]);
+
+  // Format phone: 123-456-7890
+  const formatPhone = (val: string): string => {
+    // Remove all non-digits
+    const digits = val.replace(/\D/g, '');
+
+    // Limit to 10 digits
+    const limitedDigits = digits.slice(0, 10);
+
+    // Add dashes: 123-456-7890
+    if (limitedDigits.length <= 3) {
+      return limitedDigits;
+    } else if (limitedDigits.length <= 6) {
+      return `${limitedDigits.slice(0, 3)}-${limitedDigits.slice(3)}`;
+    } else {
+      return `${limitedDigits.slice(0, 3)}-${limitedDigits.slice(3, 6)}-${limitedDigits.slice(6)}`;
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputValue = e.target.value;
+    const formatted = formatPhone(inputValue);
+    setLocalValue(formatted);
+    handleFieldChange(name, formatted);
+  };
+
+  // Display mode
+  if (!isEditing) {
+    return (
+      <div className="mb-2">
+        <label className="block text-xs font-medium text-slate-500 mb-0.5">{label}</label>
+        <div className="text-sm text-slate-900">
+          {value || <span className="text-slate-400 text-xs">—</span>}
+        </div>
+      </div>
+    );
+  }
+
+  // Edit mode
+  return (
+    <div className="mb-2">
+      <label className="block text-xs font-medium text-slate-600 mb-0.5">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <input
+        type="tel"
+        value={localValue}
+        onChange={handleChange}
+        className={`w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${hasError ? 'border-red-500' : 'border-slate-300'}`}
+        placeholder="123-456-7890"
+        maxLength={12}
+      />
+      {hasError && <p className="text-xs text-red-500 mt-0.5">{hasError}</p>}
+    </div>
+  );
+});
+
+// SSN Field component with formatting and validation
+const SSNField = memo(({ label, value, name, required = false, validationErrors, isEditing, showSSN, setShowSSN, handleFieldChange }: any) => {
+  const hasError = validationErrors[name];
+  const [localValue, setLocalValue] = useState('');
+
+  // Sync local value with prop value
+  useEffect(() => {
+    setLocalValue(value || '');
+  }, [value]);
+
+  // Format SSN with dashes: 123-45-6789
+  const formatSSN = (val: string): string => {
+    // Remove all non-digits
+    const digits = val.replace(/\D/g, '');
+
+    // Limit to 9 digits
+    const limitedDigits = digits.slice(0, 9);
+
+    // Add dashes
+    if (limitedDigits.length <= 3) {
+      return limitedDigits;
+    } else if (limitedDigits.length <= 5) {
+      return `${limitedDigits.slice(0, 3)}-${limitedDigits.slice(3)}`;
+    } else {
+      return `${limitedDigits.slice(0, 3)}-${limitedDigits.slice(3, 5)}-${limitedDigits.slice(5)}`;
+    }
+  };
+
+  // Mask SSN for display: 123-45-6789 → •••-••-••••
+  const maskSSN = (val: string): string => {
+    if (!val) return '';
+    // Replace digits with bullets, keep dashes
+    return val.replace(/\d/g, '•');
+  };
+
+  // Handle SSN input change with auto-formatting
+  const handleSSNChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const inputValue = e.target.value;
+
+    // If showing SSN, format the input
+    if (showSSN) {
+      const formatted = formatSSN(inputValue);
+      setLocalValue(formatted);
+      handleFieldChange(name, formatted);
+    } else {
+      // If hidden, extract digits from the masked input
+      // User is typing while masked - we need to handle carefully
+      const cursorPosition = e.target.selectionStart || 0;
+      const previousValue = localValue;
+
+      // Get the difference in length to determine if adding or deleting
+      if (inputValue.length > previousValue.length) {
+        // Adding a character - extract the new digit
+        const newChar = inputValue[cursorPosition - 1];
+        if (/\d/.test(newChar)) {
+          // Insert the new digit at the appropriate position in the real value
+          const digitsOnly = previousValue.replace(/\D/g, '');
+          const beforeCursor = previousValue.slice(0, cursorPosition - 1).replace(/\D/g, '').length;
+          const newDigits = digitsOnly.slice(0, beforeCursor) + newChar + digitsOnly.slice(beforeCursor);
+          const formatted = formatSSN(newDigits);
+          setLocalValue(formatted);
+          handleFieldChange(name, formatted);
+        }
+      } else if (inputValue.length < previousValue.length) {
+        // Deleting a character
+        const digitsOnly = previousValue.replace(/\D/g, '');
+        const beforeCursor = inputValue.slice(0, cursorPosition).replace(/\D/g, '').length;
+        const newDigits = digitsOnly.slice(0, beforeCursor) + digitsOnly.slice(beforeCursor + 1);
+        const formatted = formatSSN(newDigits);
+        setLocalValue(formatted);
+        handleFieldChange(name, formatted);
+      }
+    }
+  };
+
+  // Display mode
+  if (!isEditing) {
+    return (
+      <div className="mb-2">
+        <label className="block text-xs font-medium text-slate-500 mb-0.5">{label}</label>
+        <div className="text-sm text-slate-900">***-**-****</div>
+      </div>
+    );
+  }
+
+  // Edit mode
+  const displayValue = showSSN ? localValue : maskSSN(localValue);
+
+  return (
+    <div className="mb-2">
+      <label className="block text-xs font-medium text-slate-600 mb-0.5">
+        {label} {required && <span className="text-red-500">*</span>}
+      </label>
+      <div className="relative">
+        <input
+          type="text"
+          value={displayValue}
+          onChange={handleSSNChange}
+          placeholder="XXX-XX-XXXX"
+          maxLength={11}
+          className={`w-full px-2 py-1 pr-8 text-sm border rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500 ${hasError ? 'border-red-500' : 'border-slate-300'}`}
+        />
+        <button
+          type="button"
+          onClick={() => setShowSSN(!showSSN)}
+          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+          aria-label={showSSN ? 'Hide SSN' : 'Show SSN'}
+        >
+          {showSSN ? <EyeSlashIcon /> : <EyeIcon />}
+        </button>
+      </div>
+      {hasError && <p className="text-xs text-red-500 mt-0.5">{hasError}</p>}
+    </div>
+  );
+});
+
 export default function EmployeeDetailPage() {
   const searchParams = useSearchParams();
   const bitrixId = searchParams?.get('id');
@@ -526,20 +803,20 @@ export default function EmployeeDetailPage() {
 
   // All sections open by default for maximum information density
   const [openSections, setOpenSections] = useState({
-    personal: true,
-    emergency: true,
-    employment: true,
-    citizenship: true,
-    compensation: true,
-    tax: true,
-    banking: true,
-    dependents: true,
-    education: true,
-    training: true,
-    it: true,
-    vehicle: true,
-    performance: true,
-    additional: true,
+    personal: false,
+    emergency: false,
+    employment: false,
+    citizenship: false,
+    compensation: false,
+    tax: false,
+    banking: false,
+    dependents: false,
+    education: false,
+    training: false,
+    it: false,
+    vehicle: false,
+    performance: false,
+    additional: false,
   });
 
   const toggleSection = (section: keyof typeof openSections) => {
@@ -567,15 +844,43 @@ export default function EmployeeDetailPage() {
       // Transform data for backend API
       const updatePayload: any = { ...rest };
 
+      // *** FIX: Remove empty string address fields AND corrupted address to prevent Bitrix24 rejection ***
+      if (updatePayload.address === '' || (typeof updatePayload.address === 'string' && updatePayload.address.startsWith('Array'))) {
+        delete updatePayload.address;
+      }
+      if (updatePayload.addressLine1 === '') delete updatePayload.addressLine1;
+      if (updatePayload.addressLine2 === '') delete updatePayload.addressLine2;
+      if (updatePayload.city === '') delete updatePayload.city;
+      if (updatePayload.state === '') delete updatePayload.state;
+      if (updatePayload.zipCode === '') delete updatePayload.zipCode;
+
+      // *** FIX: Remove empty string date fields ***
+      if (updatePayload.dateOfBirth === '') delete updatePayload.dateOfBirth;
+      if (updatePayload.hireDate === '') delete updatePayload.hireDate;
+      if (updatePayload.terminationDate === '') delete updatePayload.terminationDate;
+
       // Convert array fields to comma-separated strings for backend
       if (Array.isArray(updatePayload.skills)) {
-        updatePayload.skills = updatePayload.skills.join(', ');
+        // Remove empty arrays
+        if (updatePayload.skills.length === 0) {
+          delete updatePayload.skills;
+        } else {
+          updatePayload.skills = updatePayload.skills.join(', ');
+        }
       }
       if (Array.isArray(updatePayload.certifications)) {
-        updatePayload.certifications = updatePayload.certifications.join(', ');
+        if (updatePayload.certifications.length === 0) {
+          delete updatePayload.certifications;
+        } else {
+          updatePayload.certifications = updatePayload.certifications.join(', ');
+        }
       }
       if (Array.isArray(updatePayload.softwareExperience)) {
-        updatePayload.softwareExperience = updatePayload.softwareExperience.join(', ');
+        if (updatePayload.softwareExperience.length === 0) {
+          delete updatePayload.softwareExperience;
+        } else {
+          updatePayload.softwareExperience = updatePayload.softwareExperience.join(', ');
+        }
       }
 
       // Convert healthInsurance and has401k to numbers (or undefined if empty)
@@ -665,7 +970,49 @@ export default function EmployeeDetailPage() {
       workPhone: employee.ufCrm6WorkPhone || '',
       officePhone: employee.ufCrm6PersonalPhone || '',
       officeExtension: employee.ufCrm6_1748054470 || '',
-      address: employee.ufCrm6UfLegalAddress || employee.ufCrm6Address || '',
+      address: (() => {
+        const addr = employee.ufCrm6UfLegalAddress || employee.ufCrm6Address || '';
+        // Filter out corrupted Bitrix array values like "Array|;|332"
+        if (typeof addr === 'string' && addr.startsWith('Array')) return '';
+        return addr;
+      })(),
+      // Parse address from Bitrix's combined address field for editing
+      addressLine1: (() => {
+        const addr = employee.ufCrm6Address || '';
+        if (!addr || addr.startsWith('Array')) return '';
+        // Try to extract street address (first part before comma)
+        const parts = addr.split(',').map((p: string) => p.trim());
+        return parts[0] || '';
+      })(),
+      addressLine2: '',
+      city: (() => {
+        const addr = employee.ufCrm6Address || '';
+        if (!addr || addr.startsWith('Array')) return '';
+        const parts = addr.split(',').map((p: string) => p.trim());
+        // City is typically second-to-last part (before "State ZIP")
+        if (parts.length >= 2) {
+          const cityPart = parts[parts.length - 2];
+          return cityPart || '';
+        }
+        return '';
+      })(),
+      state: (() => {
+        const addr = employee.ufCrm6Address || '';
+        if (!addr || addr.startsWith('Array')) return '';
+        const parts = addr.split(',').map((p: string) => p.trim());
+        // State ZIP is typically last part
+        const lastPart = parts[parts.length - 1] || '';
+        const match = lastPart.match(/([A-Z]{2})\s+\d{5}/);
+        return match ? match[1] : '';
+      })(),
+      zipCode: (() => {
+        const addr = employee.ufCrm6Address || '';
+        if (!addr || addr.startsWith('Array')) return '';
+        const parts = addr.split(',').map((p: string) => p.trim());
+        const lastPart = parts[parts.length - 1] || '';
+        const match = lastPart.match(/\d{5}/);
+        return match ? match[0] : '';
+      })(),
 
       // Emergency Contact
       emergencyContactName: employee.ufCrm6EmergencyContactName || '',
@@ -820,6 +1167,11 @@ export default function EmployeeDetailPage() {
       officePhone: employee.ufCrm6PersonalPhone,
       officeExtension: employee.ufCrm6_1748054470,
       address: employee.ufCrm6UfLegalAddress || employee.ufCrm6Address,
+      addressLine1: '',
+      addressLine2: '',
+      city: '',
+      state: '',
+      zipCode: '',
 
       // Emergency Contact
       emergencyContactName: employee.ufCrm6EmergencyContactName,
@@ -925,6 +1277,14 @@ export default function EmployeeDetailPage() {
     }
   }, [updateField]);
 
+  // Handler for Google Maps place selection
+  const handlePlaceSelected = useCallback((place: any) => {
+    updateField('addressLine1', place.street);
+    updateField('city', place.city);
+    updateField('state', place.state);
+    updateField('zipCode', place.zipCode);
+  }, [updateField]);
+
   // Early returns AFTER all hooks (satisfies Rules of Hooks)
   if (isLoading) {
     return (
@@ -945,7 +1305,7 @@ export default function EmployeeDetailPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Compact enterprise header */}
-      <div className="bg-gradient-to-r from-slate-700 to-slate-800 border-b border-slate-900 shadow">
+      <div className="sticky top-0 z-50 bg-gradient-to-r from-slate-700 to-slate-800 border-b border-slate-900 shadow">
         <div className="max-w-7xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div>
@@ -1045,11 +1405,24 @@ export default function EmployeeDetailPage() {
               handleFieldChange={handleFieldChange}
             />
             <Field label="Personal Email" value={currentData.personalEmail?.[0]} name="personalEmail" type="email" required validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
-            <Field label="Personal Phone" value={currentData.personalPhone?.[0]} name="personalPhone" type="tel" validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
-            <Field label="Work Phone" value={currentData.workPhone} name="workPhone" type="tel" validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
-            <Field label="Office Phone" value={currentData.officePhone} name="officePhone" type="tel" validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
+            <PhoneField label="Personal Phone" value={currentData.personalPhone?.[0]} name="personalPhone" validationErrors={validationErrors} isEditing={isEditing} handleFieldChange={handleFieldChange} />
+            <PhoneField label="Work Cell Phone" value={currentData.workPhone} name="workPhone" validationErrors={validationErrors} isEditing={isEditing} handleFieldChange={handleFieldChange} />
+            <PhoneField label="Office Phone" value={currentData.officePhone} name="officePhone" validationErrors={validationErrors} isEditing={isEditing} handleFieldChange={handleFieldChange} />
             <Field label="Office Extension" value={currentData.officeExtension} name="officeExtension" validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
-            <Field label="Address" value={currentData.address} name="address" colSpan={3} validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
+            <AddressAutocompleteField
+              label="Address Line 1"
+              value={currentData.addressLine1}
+              name="addressLine1"
+              colSpan={2}
+              validationErrors={validationErrors}
+              isEditing={isEditing}
+              handleFieldChange={handleFieldChange}
+              onPlaceSelected={handlePlaceSelected}
+            />
+            <Field label="Address Line 2" value={currentData.addressLine2} name="addressLine2" validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
+            <Field label="City" value={currentData.city} name="city" validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
+            <Field label="State" value={currentData.state} name="state" validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
+            <Field label="ZIP Code" value={currentData.zipCode} name="zipCode" validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
           </div>
         </Section>
 
@@ -1202,14 +1575,16 @@ export default function EmployeeDetailPage() {
               setShowBankRouting={setShowBankRouting}
               handleFieldChange={handleFieldChange}
             />
-            <Field label="Visa/Work Authorization Expiry" value={currentData.visaExpiry} name="visaExpiry" type="date"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
+            {currentData.citizenship !== '2026' && (
+              <Field label="Visa/Work Authorization Expiry" value={currentData.visaExpiry} name="visaExpiry" type="date"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
+            )}
           </div>
         </Section>
 
         {/* Compensation & Benefits */}
         <Section title="Compensation & Benefits" isOpen={openSections.compensation} onToggle={() => toggleSection('compensation')}>
           <div className="grid grid-cols-3 gap-x-4 gap-y-1">
-            <Field label="SSN" value={currentData.ssn} name="ssn" type="password"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
+            <SSNField label="SSN" value={currentData.ssn} name="ssn" validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} setShowSSN={setShowSSN} handleFieldChange={handleFieldChange} />
             <Field label="PTO Days" value={currentData.ptoDays} name="ptoDays"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Health Insurance" value={currentData.healthInsurance} name="healthInsurance"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="401(k) Enrollment" value={currentData.has401k} name="has401k"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />

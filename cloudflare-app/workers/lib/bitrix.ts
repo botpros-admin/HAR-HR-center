@@ -186,10 +186,23 @@ export class BitrixClient {
    * Create a new item (applicant, employee, etc.)
    */
   async createItem(fields: Record<string, any>): Promise<any> {
-    const response = await this.request<BitrixItemResult>('crm.item.add', {
-      entityTypeId: this.entityTypeId,
-      fields: JSON.stringify(fields)
-    });
+    // Format fields as individual parameters: fields[fieldName]=value
+    const createParams: Record<string, any> = {
+      entityTypeId: this.entityTypeId
+    };
+
+    // Add each field as a separate parameter
+    for (const [key, value] of Object.entries(fields)) {
+      if (Array.isArray(value)) {
+        value.forEach((item, index) => {
+          createParams[`fields[${key}][${index}]`] = String(item);
+        });
+      } else if (value !== null && value !== undefined) {
+        createParams[`fields[${key}]`] = String(value);
+      }
+    }
+
+    const response = await this.request<BitrixItemResult>('crm.item.add', createParams);
 
     return response.result?.item || null;
   }
@@ -199,11 +212,26 @@ export class BitrixClient {
    */
   async updateEmployee(id: number, fields: Partial<BitrixEmployee>): Promise<BitrixEmployee | null> {
     // Step 1: Update in Bitrix24
-    const response = await this.request<BitrixItemResult>('crm.item.update', {
+    // IMPORTANT: Bitrix24 expects fields as individual form parameters, NOT as a JSON string
+    // Each field should be sent as fields[fieldName]=value
+    const updateParams: Record<string, any> = {
       entityTypeId: this.entityTypeId,
-      id: id.toString(),
-      fields: JSON.stringify(fields)
-    });
+      id: id.toString()
+    };
+
+    // Add each field as a separate parameter: fields[fieldName]=value
+    for (const [key, value] of Object.entries(fields)) {
+      if (Array.isArray(value)) {
+        // For arrays, send each element as fields[fieldName][index]=value
+        value.forEach((item, index) => {
+          updateParams[`fields[${key}][${index}]`] = String(item);
+        });
+      } else if (value !== null && value !== undefined) {
+        updateParams[`fields[${key}]`] = String(value);
+      }
+    }
+
+    const response = await this.request<BitrixItemResult>('crm.item.update', updateParams);
 
     const updatedEmployee = response.result?.item as BitrixEmployee | undefined;
     if (!updatedEmployee) {
@@ -283,9 +311,7 @@ export class BitrixClient {
     await this.request('crm.item.update', {
       entityTypeId: this.entityTypeId,
       id: employeeId.toString(),
-      fields: JSON.stringify({
-        [fieldName]: [fileId]
-      })
+      [`fields[${fieldName}][0]`]: fileId
     });
 
     return fileId;

@@ -55,6 +55,11 @@ const FIELD_MAP: Record<string, string> = {
   officePhone: 'ufCrm6PersonalPhone',
   officeExtension: 'ufCrm6_1748054470',
   address: 'ufCrm6Address',
+  addressLine1: 'ufCrm6Address', // Will be combined with other address fields
+  addressLine2: 'ufCrm6Address', // Will be combined with other address fields
+  city: 'ufCrm6Address', // Will be combined with other address fields
+  state: 'ufCrm6Address', // Will be combined with other address fields
+  zipCode: 'ufCrm6Address', // Will be combined with other address fields
   profilePhoto: 'ufCrm6ProfilePhoto',
 
   // Legacy aliases for backward compatibility
@@ -181,6 +186,11 @@ const EmployeeUpdateSchema = z.object({
   officePhone: z.string().optional(),
   officeExtension: z.string().optional(),
   address: z.string().max(500).optional(),
+  addressLine1: z.string().max(200).optional(),
+  addressLine2: z.string().max(200).optional(),
+  city: z.string().max(100).optional(),
+  state: z.string().max(2).optional(),
+  zipCode: z.string().max(10).optional(),
   profilePhoto: z.string().optional(),
 
   // Legacy aliases for backward compatibility
@@ -207,7 +217,7 @@ const EmployeeUpdateSchema = z.object({
   wcCode: z.number().optional(),
 
   // Compensation & Benefits (5 fields)
-  ssn: z.string().optional(),
+  ssn: z.string().regex(/^(\d{3}-\d{2}-\d{4}|)$/, 'SSN must be in format XXX-XX-XXXX').optional(),
   ptoDays: z.string().max(10).optional(),
   healthInsurance: z.union([z.string(), z.number().int()]).optional(), // Accept both for flexibility
   has401k: z.union([z.string(), z.number().int()]).optional(),
@@ -481,10 +491,12 @@ adminRoutes.patch('/employee/:bitrixId', async (c) => {
 
   try {
     const body = await c.req.json();
+    console.log(`[PATCH /employee/${bitrixId}] Request body:`, JSON.stringify(body, null, 2));
 
     // Validate with Zod
     const validation = EmployeeUpdateSchema.safeParse(body);
     if (!validation.success) {
+      console.error(`[PATCH /employee/${bitrixId}] Validation failed:`, JSON.stringify(validation.error.errors, null, 2));
       return c.json({
         error: 'Validation failed',
         details: validation.error.errors
@@ -504,6 +516,35 @@ adminRoutes.patch('/employee/:bitrixId', async (c) => {
       } else {
         // Track unmapped fields for debugging
         unmappedFields.push(key);
+      }
+    }
+
+    // Combine separate address fields into single address if provided
+    if (validatedData.addressLine1 || validatedData.city || validatedData.state || validatedData.zipCode) {
+      const addressParts: string[] = [];
+
+      if (validatedData.addressLine1) {
+        addressParts.push(validatedData.addressLine1);
+      }
+      if (validatedData.addressLine2) {
+        addressParts.push(validatedData.addressLine2);
+      }
+      if (validatedData.city || validatedData.state || validatedData.zipCode) {
+        const cityStateZip = [
+          validatedData.city,
+          validatedData.state,
+          validatedData.zipCode
+        ].filter(Boolean).join(' ');
+
+        if (cityStateZip) {
+          addressParts.push(cityStateZip);
+        }
+      }
+
+      // Combine with commas
+      const fullAddress = addressParts.join(', ');
+      if (fullAddress) {
+        bitrixFields['ufCrm6Address'] = fullAddress;
       }
     }
 
@@ -565,11 +606,42 @@ adminRoutes.patch('/employee/:bitrixId', async (c) => {
       }
     }
 
-    // Update employee in Bitrix24
-    const updatedEmployee = await bitrix.updateEmployee(bitrixId, bitrixFields);
+    // Update employee in Bitrix24 with enhanced error logging
+    console.log(`[PATCH /employee/${bitrixId}] About to call bitrix.updateEmployee with fields:`, JSON.stringify(bitrixFields, null, 2));
+
+    let updatedEmployee;
+    try {
+      updatedEmployee = await bitrix.updateEmployee(bitrixId, bitrixFields);
+      console.log(`[PATCH /employee/${bitrixId}] Bitrix update successful`);
+    } catch (bitrixError: any) {
+      // Log detailed Bitrix error
+      console.error(`[PATCH /employee/${bitrixId}] Bitrix24 API Error:`, {
+        message: bitrixError.message,
+        stack: bitrixError.stack,
+        name: bitrixError.name,
+        cause: bitrixError.cause,
+        // Log the entire error object in case it has custom properties
+        fullError: JSON.stringify(bitrixError, Object.getOwnPropertyNames(bitrixError), 2)
+      });
+
+      // Return detailed error to frontend
+      return c.json({
+        error: 'Bitrix24 API rejected the update',
+        details: bitrixError.message || 'Unknown Bitrix error',
+        bitrixError: {
+          message: bitrixError.message,
+          type: bitrixError.name,
+          // Include any additional error properties that might exist
+          ...bitrixError
+        },
+        sentFields: Object.keys(bitrixFields),
+        sentPayload: bitrixFields // Include full payload for debugging (remove in production)
+      }, 500);
+    }
 
     if (!updatedEmployee) {
-      return c.json({ error: 'Failed to update employee in Bitrix24' }, 500);
+      console.error(`[PATCH /employee/${bitrixId}] Bitrix updateEmployee returned null/undefined`);
+      return c.json({ error: 'Failed to update employee in Bitrix24 - no data returned' }, 500);
     }
 
     // Log the update with full diff in audit log
