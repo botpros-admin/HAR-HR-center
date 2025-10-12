@@ -14,7 +14,7 @@ const employeeSchema = z.object({
   middleName: z.string().max(100).optional(),
   lastName: z.string().min(1, 'Required').max(100),
   preferredName: z.string().max(100).optional(),
-  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format: YYYY-MM-DD'),
+  dateOfBirth: z.string().regex(/^(\d{4}-\d{2}-\d{2}|)$/, 'Format: YYYY-MM-DD').optional(),
   gender: z.string().optional(),
   maritalStatus: z.string().optional(),
   citizenship: z.string().optional(),
@@ -36,7 +36,7 @@ const employeeSchema = z.object({
   position: z.string().min(1, 'Required').max(200),
   subsidiary: z.string().max(200).optional(),
   employmentStatus: z.enum(['Y', 'N']),
-  hireDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Format: YYYY-MM-DD').optional(),
+  hireDate: z.string().regex(/^(\d{4}-\d{2}-\d{2}|)$/, 'Format: YYYY-MM-DD').optional(),
   employmentType: z.string().max(100).optional(),
   shift: z.string().max(100).optional(),
   payRate: z.string().optional(),
@@ -75,7 +75,7 @@ const employeeSchema = z.object({
   // Education & Skills (7 fields)
   educationLevel: z.string().max(100).optional(),
   schoolName: z.string().max(200).optional(),
-  graduationYear: z.string().regex(/^\d{4}$/, 'Format: YYYY').optional(),
+  graduationYear: z.string().regex(/^(\d{4}|)$/, 'Format: YYYY').optional(),
   fieldsOfStudy: z.array(z.string()).optional(),
   skills: z.array(z.string()).optional(),
   certifications: z.array(z.string()).optional(),
@@ -588,6 +588,38 @@ export default function EmployeeDetailPage() {
     },
   });
 
+  // Helper function to convert ISO datetime to YYYY-MM-DD format
+  const formatDate = (dateStr: string | undefined | null): string => {
+    if (!dateStr) return '';
+    // Handle ISO format: "1973-12-15T00:00:00+00:00" -> "1973-12-15"
+    if (dateStr.includes('T')) {
+      return dateStr.split('T')[0];
+    }
+    return dateStr;
+  };
+
+  // Helper to extract year from date string
+  const extractYear = (dateStr: string | undefined | null): string => {
+    if (!dateStr) return '';
+    const formatted = formatDate(dateStr);
+    return formatted.split('-')[0] || '';
+  };
+
+  // Helper to convert number/string to string
+  const toStr = (val: any): string => {
+    if (val === null || val === undefined) return '';
+    return String(val);
+  };
+
+  // Helper to convert string/number to boolean
+  const toBool = (val: any): boolean => {
+    if (typeof val === 'boolean') return val;
+    if (typeof val === 'string') {
+      return val === 'Y' || val === 'true' || val === '1';
+    }
+    return Boolean(val);
+  };
+
   const handleEdit = () => {
     if (!employee) return;
     setFormData({
@@ -596,10 +628,10 @@ export default function EmployeeDetailPage() {
       middleName: employee.ufCrm6SecondName || '',
       lastName: employee.ufCrm6LastName || '',
       preferredName: employee.ufCrm6PreferredName || '',
-      dateOfBirth: employee.ufCrm6PersonalBirthday || '',
-      gender: employee.ufCrm6PersonalGender || '',
+      dateOfBirth: formatDate(employee.ufCrm6PersonalBirthday),
+      gender: toStr(employee.ufCrm6PersonalGender),
       maritalStatus: employee.ufCrm6MaritalStatus || '',
-      citizenship: employee.ufCrm6Citizenship || '',
+      citizenship: toStr(employee.ufCrm6Citizenship),
       personalEmail: employee.ufCrm6Email || [],
       personalPhone: employee.ufCrm6PersonalMobile || [],
       workPhone: employee.ufCrm6WorkPhone || '',
@@ -615,13 +647,13 @@ export default function EmployeeDetailPage() {
       // Employment Details
       badgeNumber: employee.ufCrm6BadgeNumber || '',
       position: employee.ufCrm6WorkPosition || '',
-      subsidiary: employee.ufCrm6Subsidiary || '',
+      subsidiary: toStr(employee.ufCrm6Subsidiary),
       employmentStatus: employee.ufCrm6EmploymentStatus || 'Y',
-      hireDate: employee.ufCrm6EmploymentStartDate || '',
-      employmentType: employee.ufCrm6EmploymentType || '',
+      hireDate: formatDate(employee.ufCrm6EmploymentStartDate),
+      employmentType: toStr(employee.ufCrm6EmploymentType),
       shift: employee.ufCrm6Shift || '',
       payRate: employee.ufCrm6PayRate || '',
-      benefitsEligible: employee.ufCrm6BenefitsEligible || false,
+      benefitsEligible: toBool(employee.ufCrm6BenefitsEligible),
       salesTerritory: employee.ufCrm6Sales || '',
       projectCategory: employee.ufCrm_6_SALES_UF_USER_LEGAL_1740423289664 || '',
       wcCode: employee.ufCrm6WcCode || 0,
@@ -634,8 +666,8 @@ export default function EmployeeDetailPage() {
       lifeBeneficiaries: employee.ufCrm6LifeBeneficiaries || '',
 
       // Tax & Payroll
-      paymentMethod: employee.ufCrm_6_UF_USR_1737120507262 || '',
-      taxFilingStatus: employee.ufCrm6TaxFilingStatus || '',
+      paymentMethod: toStr(employee.ufCrm_6_UF_USR_1737120507262),
+      taxFilingStatus: toStr(employee.ufCrm6TaxFilingStatus),
       w4Exemptions: employee.ufCrm_6_W4_EXEMPTIONS || '',
       additionalFedWithhold: employee.ufCrm6AdditionalFedWithhold || '',
       additionalStateWithhold: employee.ufCrm6AdditionalStateWithhold || '',
@@ -656,16 +688,16 @@ export default function EmployeeDetailPage() {
       // Education & Skills
       educationLevel: employee.ufCrm6EducationLevel || '',
       schoolName: employee.ufCrm6SchoolName || '',
-      graduationYear: employee.ufCrm6GraduationYear || '',
+      graduationYear: extractYear(employee.ufCrm6GraduationYear),
       fieldsOfStudy: Array.isArray(employee.ufCrm6FieldOfStudy) ? employee.ufCrm6FieldOfStudy : (employee.ufCrm6FieldOfStudy ? [employee.ufCrm6FieldOfStudy] : []),
       skills: Array.isArray(employee.ufCrm6Skills) ? employee.ufCrm6Skills : (employee.ufCrm6Skills ? employee.ufCrm6Skills.split(',').map((s: string) => s.trim()) : []),
       certifications: Array.isArray(employee.ufCrm6Certifications) ? employee.ufCrm6Certifications : (employee.ufCrm6Certifications ? employee.ufCrm6Certifications.split(',').map((s: string) => s.trim()) : []),
       skillsLevel: employee.ufCrm6SkillsLevel || '',
 
       // Training & Compliance
-      requiredTrainingStatus: employee.ufCrm6RequiredTraining || '',
-      safetyTrainingStatus: employee.ufCrm6SafetyTraining || '',
-      complianceTrainingStatus: employee.ufCrm6ComplianceTraining || '',
+      requiredTrainingStatus: toStr(employee.ufCrm6RequiredTraining),
+      safetyTrainingStatus: toStr(employee.ufCrm6SafetyTraining),
+      complianceTrainingStatus: toStr(employee.ufCrm6ComplianceTraining),
       trainingDate: employee.ufCrm6TrainingDate || '',
       nextTrainingDue: employee.ufCrm6NextTrainingDue || '',
       trainingNotes: employee.ufCrm6TrainingNotes || '',
@@ -680,8 +712,8 @@ export default function EmployeeDetailPage() {
       accessLevel: employee.ufCrm6AccessLevel || '',
       securityClearance: employee.ufCrm6SecurityClearance || '',
       networkStatus: employee.ufCrm6NetworkStatus || '',
-      vpnAccess: employee.ufCrm6VpnAccess || false,
-      remoteAccess: employee.ufCrm6RemoteAccess || false,
+      vpnAccess: toBool(employee.ufCrm6VpnAccess),
+      remoteAccess: toBool(employee.ufCrm6RemoteAccess),
 
       // Vehicle & Licensing
       driversLicenseExpiry: employee.ufCrm_6_UF_USR_1747966315398_EXPIRY || '',
@@ -693,7 +725,7 @@ export default function EmployeeDetailPage() {
       // Performance & Reviews
       reviewDates: employee.ufCrm6ReviewDate || [],
       terminationDate: employee.ufCrm6TerminationDate || '',
-      rehireEligible: employee.ufCrm6RehireEligible || false,
+      rehireEligible: toBool(employee.ufCrm6RehireEligible),
 
       // Additional Information
       additionalInfo: employee.ufCrm6AdditionalInfo || '',
