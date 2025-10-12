@@ -322,13 +322,13 @@ function Section({ title, isOpen, onToggle, children }: { title: string; isOpen:
     <div className="border border-slate-200 rounded mb-2 bg-white shadow-sm">
       <button
         onClick={onToggle}
-        className="w-full px-4 py-2 flex items-center justify-between hover:bg-slate-50 transition-colors"
+        className="w-full px-3 sm:px-4 py-2 flex items-center justify-between hover:bg-slate-50 transition-colors"
       >
         <h3 className="text-xs font-semibold text-slate-700 uppercase tracking-wider">{title}</h3>
-        <span className="text-slate-500">{isOpen ? <ChevronUp /> : <ChevronDown />}</span>
+        <span className="text-slate-500 flex-shrink-0">{isOpen ? <ChevronUp /> : <ChevronDown />}</span>
       </button>
       {isOpen && (
-        <div className="px-4 py-3 border-t border-slate-100">
+        <div className="px-3 sm:px-4 py-2 sm:py-3 border-t border-slate-100">
           {children}
         </div>
       )}
@@ -1306,21 +1306,21 @@ export default function EmployeeDetailPage() {
     <div className="min-h-screen bg-slate-50">
       {/* Compact enterprise header */}
       <div className="sticky top-0 z-50 bg-gradient-to-r from-slate-700 to-slate-800 border-b border-slate-900 shadow">
-        <div className="max-w-7xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-lg font-semibold text-white">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-base sm:text-lg font-semibold text-white truncate">
                 {currentData.firstName || '—'} {currentData.lastName || '—'}
               </h1>
-              <p className="text-xs text-slate-300 mt-0.5">
+              <p className="text-xs text-slate-300 mt-0.5 truncate">
                 #{currentData.badgeNumber || '—'} · {currentData.position || '—'} · {currentData.employmentStatus === 'Y' ? 'Active' : 'Inactive'}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
               {!isEditing ? (
                 <button
                   onClick={handleEdit}
-                  className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded shadow hover:bg-blue-700 transition-colors"
+                  className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded shadow hover:bg-blue-700 transition-colors whitespace-nowrap"
                 >
                   Edit
                 </button>
@@ -1328,14 +1328,14 @@ export default function EmployeeDetailPage() {
                 <>
                   <button
                     onClick={handleCancel}
-                    className="px-3 py-1.5 bg-slate-500 text-white text-xs font-medium rounded hover:bg-slate-600 transition-colors"
+                    className="px-3 py-1.5 bg-slate-500 text-white text-xs font-medium rounded hover:bg-slate-600 transition-colors whitespace-nowrap"
                   >
                     Cancel
                   </button>
                   <button
                     onClick={handleSave}
                     disabled={updateMutation.isPending}
-                    className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition-colors disabled:opacity-50"
+                    className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 transition-colors disabled:opacity-50 whitespace-nowrap"
                   >
                     {updateMutation.isPending ? 'Saving...' : 'Save'}
                   </button>
@@ -1348,7 +1348,7 @@ export default function EmployeeDetailPage() {
 
       {/* Validation errors */}
       {Object.keys(validationErrors).length > 0 && (
-        <div className="max-w-7xl mx-auto px-4 pt-3">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 pt-2 sm:pt-3">
           <div className="bg-red-50 border border-red-200 rounded p-2">
             <p className="text-xs font-medium text-red-800">Fix errors:</p>
             <ul className="mt-1 text-xs text-red-700 list-disc list-inside">
@@ -1361,10 +1361,10 @@ export default function EmployeeDetailPage() {
       )}
 
       {/* Compact content */}
-      <div className="max-w-7xl mx-auto px-4 py-3">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-3">
         {/* Personal Information */}
         <Section title="Personal Information" isOpen={openSections.personal} onToggle={() => toggleSection('personal')}>
-          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-1">
             <Field label="First Name" value={currentData.firstName} name="firstName" required validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Middle Name" value={currentData.middleName} name="middleName" validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Last Name" value={currentData.lastName} name="lastName" required validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
@@ -1428,7 +1428,7 @@ export default function EmployeeDetailPage() {
 
         {/* Emergency Contact */}
         <Section title="Emergency Contact" isOpen={openSections.emergency} onToggle={() => toggleSection('emergency')}>
-          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-1">
             <Field label="Contact Name" value={currentData.emergencyContactName} name="emergencyContactName"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Contact Phone" value={currentData.emergencyContactPhone} name="emergencyContactPhone" type="tel"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Relationship" value={currentData.emergencyContactRelationship} name="emergencyContactRelationship"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
@@ -1437,7 +1437,7 @@ export default function EmployeeDetailPage() {
 
         {/* Employment Details */}
         <Section title="Employment Details" isOpen={openSections.employment} onToggle={() => toggleSection('employment')}>
-          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-1">
             <Field label="Badge Number" value={currentData.badgeNumber} name="badgeNumber"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Position" value={currentData.position} name="position" required  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field
@@ -1556,7 +1556,7 @@ export default function EmployeeDetailPage() {
 
         {/* Citizenship & Work Authorization */}
         <Section title="Citizenship & Work Authorization" isOpen={openSections.citizenship} onToggle={() => toggleSection('citizenship')}>
-          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-1">
             <Field
               label="Citizenship Status"
               value={currentData.citizenship}
@@ -1583,7 +1583,7 @@ export default function EmployeeDetailPage() {
 
         {/* Compensation & Benefits */}
         <Section title="Compensation & Benefits" isOpen={openSections.compensation} onToggle={() => toggleSection('compensation')}>
-          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-1">
             <SSNField label="SSN" value={currentData.ssn} name="ssn" validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} setShowSSN={setShowSSN} handleFieldChange={handleFieldChange} />
             <Field label="PTO Days" value={currentData.ptoDays} name="ptoDays"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Health Insurance" value={currentData.healthInsurance} name="healthInsurance"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
@@ -1594,7 +1594,7 @@ export default function EmployeeDetailPage() {
 
         {/* Tax & Payroll */}
         <Section title="Tax & Payroll Information" isOpen={openSections.tax} onToggle={() => toggleSection('tax')}>
-          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-1">
             <Field
               label="Payment Method"
               value={currentData.paymentMethod}
@@ -1639,7 +1639,7 @@ export default function EmployeeDetailPage() {
 
         {/* Banking & Direct Deposit */}
         <Section title="Banking & Direct Deposit" isOpen={openSections.banking} onToggle={() => toggleSection('banking')}>
-          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-1">
             <Field label="Bank Name" value={currentData.bankName} name="bankName"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Account Holder Name" value={currentData.bankAccountName} name="bankAccountName"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field
@@ -1667,7 +1667,7 @@ export default function EmployeeDetailPage() {
 
         {/* Dependents & Beneficiaries */}
         <Section title="Dependents & Beneficiaries" isOpen={openSections.dependents} onToggle={() => toggleSection('dependents')}>
-          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-1">
             <TagField label="Dependent Names" value={currentData.dependentNames} name="dependentNames" colSpan={3}  validationErrors={validationErrors} isEditing={isEditing} updateField={updateField} />
             <TagField label="Dependent SSNs" value={currentData.dependentSsns} name="dependentSsns" colSpan={3}  validationErrors={validationErrors} isEditing={isEditing} updateField={updateField} />
             <TagField label="Dependent Relationships" value={currentData.dependentRelationships} name="dependentRelationships" colSpan={3}  validationErrors={validationErrors} isEditing={isEditing} updateField={updateField} />
@@ -1676,7 +1676,7 @@ export default function EmployeeDetailPage() {
 
         {/* Education & Skills */}
         <Section title="Education & Skills" isOpen={openSections.education} onToggle={() => toggleSection('education')}>
-          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-1">
             <Field
               label="Education Level"
               value={currentData.educationLevel}
@@ -1723,7 +1723,7 @@ export default function EmployeeDetailPage() {
 
         {/* Training & Compliance */}
         <Section title="Training & Compliance" isOpen={openSections.training} onToggle={() => toggleSection('training')}>
-          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-1">
             <Field
               label="Required Training Status"
               value={currentData.requiredTrainingStatus}
@@ -1786,7 +1786,7 @@ export default function EmployeeDetailPage() {
 
         {/* IT & Equipment */}
         <Section title="IT & Equipment" isOpen={openSections.it} onToggle={() => toggleSection('it')}>
-          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-1">
             <TagField label="Software Experience" value={currentData.softwareExperience} name="softwareExperience" colSpan={3}  validationErrors={validationErrors} isEditing={isEditing} updateField={updateField} />
             <TagField label="Equipment Assigned" value={currentData.equipmentAssigned} name="equipmentAssigned" colSpan={3}  validationErrors={validationErrors} isEditing={isEditing} updateField={updateField} />
             <Field
@@ -1871,7 +1871,7 @@ export default function EmployeeDetailPage() {
 
         {/* Vehicle & Licensing */}
         <Section title="Vehicle & Licensing" isOpen={openSections.vehicle} onToggle={() => toggleSection('vehicle')}>
-          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-1">
             <Field label="Driver's License Expiry" value={currentData.driversLicenseExpiry} name="driversLicenseExpiry" type="date"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Auto Insurance Expiry" value={currentData.autoInsuranceExpiry} name="autoInsuranceExpiry" type="date"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
           </div>
@@ -1879,7 +1879,7 @@ export default function EmployeeDetailPage() {
 
         {/* Performance & Reviews */}
         <Section title="Performance & Reviews" isOpen={openSections.performance} onToggle={() => toggleSection('performance')}>
-          <div className="grid grid-cols-3 gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-3 sm:gap-x-4 gap-y-1">
             <TagField label="Performance Review Dates" value={currentData.reviewDates} name="reviewDates" colSpan={2}  validationErrors={validationErrors} isEditing={isEditing} updateField={updateField} />
             <Field label="Termination Date" value={currentData.terminationDate} name="terminationDate" type="date"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Rehire Eligible" value={currentData.rehireEligible} name="rehireEligible" type="checkbox"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
