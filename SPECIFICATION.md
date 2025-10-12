@@ -1,1095 +1,1398 @@
 # Hartzell HR Center - Technical Specification
 
-**Version:** 1.0
-**Last Updated:** October 3, 2025
-**Status:** Planning Phase
+**Version:** 1.0 (As-Deployed)
+**Last Updated:** October 12, 2025
+**Status:** Production
 
 ---
 
 ## Table of Contents
 
-1. [Executive Summary](#executive-summary)
-2. [System Architecture](#system-architecture)
-3. [Data Model](#data-model)
-4. [User Roles & Permissions](#user-roles--permissions)
-5. [Module Specifications](#module-specifications)
-6. [API Integration](#api-integration)
-7. [Security & Compliance](#security--compliance)
-8. [User Interface Design](#user-interface-design)
-9. [Development Roadmap](#development-roadmap)
+1. [System Overview](#system-overview)
+2. [Architecture](#architecture)
+3. [Infrastructure](#infrastructure)
+4. [Authentication & Security](#authentication--security)
+5. [Data Model](#data-model)
+6. [API Specification](#api-specification)
+7. [Frontend Application](#frontend-application)
+8. [Deployment](#deployment)
 
 ---
 
-## Executive Summary
+## System Overview
 
-### Problem Statement
-Hartzell Companies currently uses standalone HTML forms for HR processes, resulting in:
-- Manual data entry and duplication
-- No centralized employee database
-- Disconnected workflows
-- No automation or pipeline management
-- Difficult compliance tracking
-- Poor user experience
+### Purpose
 
-### Solution
-Build a comprehensive Next.js web application that:
-- Integrates seamlessly with Bitrix24 SPA (entity type 1054)
-- Provides unified employee lifecycle management
-- Automates HR workflows from application to termination
-- Delivers role-based dashboards for different user types
-- Ensures compliance and audit-ready documentation
+The Hartzell HR Center provides a secure web portal for:
+1. **Employees** - View/edit personal information, emergency contacts, tax/banking details
+2. **Administrators** - Manage employee records, upload document templates, assign documents
 
-### Key Deliverables
-1. Public employment application portal
-2. Onboarding workflow system
-3. Employee self-service portal
-4. Manager dashboard for team oversight
-5. HR admin interface for full system management
-6. Performance review system
-7. Disciplinary action tracking
-8. Offboarding and termination workflow
+All employee data is stored in Bitrix24 CRM (entity type 1054). The system acts as a user-friendly interface layer over Bitrix24.
+
+### Production URLs
+
+- **Employee Portal:** https://app.hartzell.work
+- **Backend API:** https://hartzell.work/api/*
+
+### Core Features (Implemented)
+
+1. **3-Tier Authentication**
+   - Tier 1: Badge Number + Date of Birth
+   - Tier 2: Employee ID verification
+   - Tier 3: Last 4 SSN + hCaptcha
+
+2. **Employee Self-Service**
+   - View/edit 100+ profile fields
+   - Emergency contact updates
+   - Address changes
+   - Banking/tax information updates
+
+3. **Admin Dashboard**
+   - Employee directory with search/filter
+   - Individual employee detail pages
+   - Bulk employee sync from Bitrix24
+   - Field-level editing with validation
+
+4. **Document Management**
+   - Upload PDF templates to R2 storage
+   - Define field positions (drag-drop interface)
+   - Assign templates to employees
+   - Track assignment status (pending/completed)
+
+### Not Implemented
+
+- E-signature system (OpenSign integration was planned but abandoned)
+- Email notifications
+- Performance review system
+- Disciplinary action tracking
+- Recruitment/application portal
+- Onboarding checklist system
+- Offboarding workflow
 
 ---
 
-## System Architecture
+## Architecture
 
-### High-Level Architecture
+### High-Level Diagram
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Next.js Application                   │
-│                  (App Router, TypeScript)                │
-├─────────────────────────────────────────────────────────┤
-│                                                           │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │ Public Pages │  │ Auth Pages   │  │ Protected    │  │
-│  │ - Apply      │  │ - Login      │  │ - Dashboard  │  │
-│  │ - Careers    │  │ - Register   │  │ - Employees  │  │
-│  └──────────────┘  └──────────────┘  │ - Reviews    │  │
-│                                        │ - Admin      │  │
-│                                        └──────────────┘  │
-├─────────────────────────────────────────────────────────┤
-│                  API Layer (Route Handlers)              │
-│  - /api/employees  - /api/onboarding  - /api/reviews    │
-├─────────────────────────────────────────────────────────┤
-│               Bitrix24 API Client (SDK)                  │
-│  - Authentication  - CRUD Operations  - File Upload     │
-└────────────────────────┬────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│              Bitrix24 Smart Process Automation           │
-│                    (Entity Type 1054)                    │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  Pipeline 1: Recruitment (ID 18)                 │   │
-│  │  - App Incomplete → Under Review → Offered       │   │
-│  └──────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────┐   │
-│  │  Pipeline 2: Onboarding (ID 10)                  │   │
-│  │  - Incomplete → Docs Pending → IT & Access       │   │
-│  │  → Hired                                          │   │
-│  └──────────────────────────────────────────────────┘   │
-│                                                           │
-│  - 100+ Custom Fields                                    │
-│  - Document Storage                                      │
-│  - Automation Rules                                      │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                      Cloudflare CDN                          │
+│                  (TLS termination, caching)                  │
+└───────────────────────┬──────────────────────────────────────┘
+                        │
+        ┌───────────────┴────────────────┐
+        │                                │
+        ▼                                ▼
+┌───────────────────┐          ┌─────────────────────┐
+│  Cloudflare Pages │          │ Cloudflare Workers  │
+│  (Next.js Static) │          │  (Hono Framework)   │
+│                   │          │                     │
+│  app.hartzell.work│─────────▶│ hartzell.work/api/* │
+└───────────────────┘          └──────────┬──────────┘
+                                          │
+                      ┌───────────────────┼───────────────────┐
+                      │                   │                   │
+                      ▼                   ▼                   ▼
+              ┌──────────────┐   ┌──────────────┐   ┌──────────────┐
+              │ D1 Database  │   │  KV Cache    │   │  R2 Storage  │
+              │  (SQLite)    │   │  (24hr TTL)  │   │    (PDFs)    │
+              │              │   │              │   │              │
+              │ - sessions   │   │ - employees  │   │ - templates  │
+              │ - admins     │   └──────────────┘   │ - assets     │
+              │ - templates  │                      └──────────────┘
+              │ - assignments│
+              └──────────────┘
+                      │
+                      │ (Bitrix24 API calls)
+                      ▼
+              ┌──────────────────────────┐
+              │   Bitrix24 CRM           │
+              │   Entity Type 1054       │
+              │   (Source of Truth)      │
+              │                          │
+              │ - 39 employees           │
+              │ - 100+ custom fields     │
+              │ - File storage           │
+              └──────────────────────────┘
 ```
 
 ### Technology Stack
 
-```typescript
+**Backend (Cloudflare Workers):**
+```
+Runtime:     Cloudflare Workers (V8 isolates, edge compute)
+Framework:   Hono 4.x (Express-like API for Workers)
+Language:    TypeScript 5.3+
+Database:    Cloudflare D1 (SQLite, 7 tables)
+Cache:       Cloudflare KV (key-value store, 24hr TTL)
+Storage:     Cloudflare R2 (S3-compatible object storage)
+Validation:  Zod
+Auth:        Custom session management (encrypted cookies)
+CAPTCHA:     hCaptcha
+```
+
+**Frontend (Cloudflare Pages):**
+```
+Framework:   Next.js 14 (App Router, static export)
+Language:    TypeScript 5.3+
+Styling:     Tailwind CSS 3.4+
+Components:  shadcn/ui, Radix UI primitives
+Icons:       Lucide React
+Animation:   Framer Motion, Lottie
+Forms:       React Hook Form + Zod validation
+HTTP:        Native fetch (credentials: 'include' for cookies)
+```
+
+**Integration:**
+```
+Bitrix24:    REST API via webhook URL
+             Entity Type: 1054 (HR Center SPA)
+             100+ custom fields (ufCrm6* prefix)
+```
+
+---
+
+## Infrastructure
+
+### Cloudflare Account
+
+**Account ID:** b68132a02e46f8cc02bcf9c5745a72b9
+
+### Production Resources
+
+#### 1. Cloudflare Worker
+
+**Name:** hartzell-hr-center-production
+**Routes:** `hartzell.work/api/*`
+**Current Version:** e702eb84-6e35-498f-899b-4961d876fda9
+**Deployed:** October 12, 2025
+
+**Entry Point:** `workers/index.ts` (Hono app)
+
+**Routes:**
+- `POST /api/auth/login` - Tier 1 auth (badge + DOB)
+- `POST /api/auth/verify-ssn` - Tier 3 auth (SSN + CAPTCHA)
+- `POST /api/auth/logout` - Session termination
+- `GET /api/auth/session` - Session validation
+- `GET /api/employee/profile` - Employee data (authenticated)
+- `PUT /api/employee/profile` - Update employee data
+- `GET /api/employee/dashboard` - Dashboard summary
+- `GET /api/employee/tasks` - Pending tasks
+- `GET /api/employee/documents` - Assigned documents
+- `GET /api/admin/employees` - Employee list (admin)
+- `POST /api/admin/employees/refresh` - Sync from Bitrix24
+- `GET /api/admin/employee/:id` - Employee detail (admin)
+- `PATCH /api/admin/employee/:id` - Update employee (admin)
+- `GET /api/admin/templates` - Template list
+- `POST /api/admin/templates` - Upload template
+- `DELETE /api/admin/templates/:id` - Delete template
+- `PUT /api/admin/templates/:id/fields` - Update field positions
+- `GET /api/admin/assignments` - Assignment list
+- `POST /api/admin/assignments` - Create assignment
+- `DELETE /api/admin/assignments/:id` - Delete assignment
+- `GET /api/signatures/pending` - Pending signatures (placeholder)
+- `GET /api/signatures/:id/url` - Signature URL (placeholder)
+
+#### 2. D1 Database
+
+**Name:** hartzell_hr_prod
+**ID:** 9926c3a9-c6e1-428f-8c36-fdb001c326fd
+
+**Schema:**
+```sql
+-- Session management
+CREATE TABLE sessions (
+  id TEXT PRIMARY KEY,
+  employee_id INTEGER NOT NULL,
+  bitrix_id INTEGER NOT NULL,
+  full_name TEXT NOT NULL,
+  badge_number TEXT NOT NULL,
+  auth_level INTEGER NOT NULL, -- 1, 2, or 3
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL,
+  last_activity INTEGER NOT NULL
+);
+
+-- Rate limiting
+CREATE TABLE login_attempts (
+  ip_address TEXT NOT NULL,
+  attempt_time INTEGER NOT NULL,
+  success INTEGER DEFAULT 0,
+  PRIMARY KEY (ip_address, attempt_time)
+);
+
+-- Admin authentication
+CREATE TABLE admin_users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL, -- bcrypt
+  full_name TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  last_login INTEGER
+);
+
+-- Employee cache (for quick lookups)
+CREATE TABLE employee_cache (
+  bitrix_id INTEGER PRIMARY KEY,
+  badge_number TEXT UNIQUE NOT NULL,
+  full_name TEXT NOT NULL,
+  position TEXT,
+  department TEXT,
+  email TEXT,
+  phone TEXT,
+  data TEXT, -- JSON snapshot
+  last_sync INTEGER NOT NULL
+);
+
+-- Signature requests (placeholder for future)
+CREATE TABLE signature_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee_id INTEGER NOT NULL,
+  document_type TEXT NOT NULL,
+  document_title TEXT NOT NULL,
+  status TEXT DEFAULT 'pending', -- pending, completed, cancelled
+  signature_url TEXT,
+  created_at INTEGER NOT NULL,
+  completed_at INTEGER
+);
+
+-- PDF templates
+CREATE TABLE templates (
+  id TEXT PRIMARY KEY, -- UUID
+  filename TEXT NOT NULL,
+  category TEXT NOT NULL, -- onboarding, compliance, benefits, performance, other
+  description TEXT,
+  field_positions TEXT, -- JSON array of field definitions
+  active INTEGER DEFAULT 1,
+  r2_key TEXT NOT NULL, -- R2 object key
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- Document assignments
+CREATE TABLE assignments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  template_id TEXT NOT NULL,
+  employee_bitrix_id INTEGER NOT NULL,
+  assigned_by TEXT NOT NULL,
+  status TEXT DEFAULT 'pending', -- pending, completed, cancelled
+  priority TEXT DEFAULT 'normal', -- low, normal, high
+  due_date INTEGER,
+  notes TEXT,
+  created_at INTEGER NOT NULL,
+  completed_at INTEGER,
+  FOREIGN KEY (template_id) REFERENCES templates(id)
+);
+```
+
+#### 3. KV Namespace
+
+**Binding:** CACHE
+**ID:** 54f7714316b14265a8224c255d9a7f80
+
+**Usage:**
+- Cache employee data fetched from Bitrix24
+- Key format: `employee:badge:{badgeNumber}` or `employee:id:{bitrixId}`
+- TTL: 24 hours (86400 seconds)
+- Reduces Bitrix24 API calls
+- Invalidated on employee updates
+
+#### 4. R2 Storage
+
+**Buckets:**
+1. **hartzell-assets-prod** (Binding: ASSETS)
+   - General assets (images, files)
+   - Public read access
+
+2. **hartzell-hr-templates-prod** (Binding: DOCUMENTS)
+   - PDF templates uploaded by admins
+   - Private access (authenticated only)
+   - Object naming: `templates/{uuid}.pdf`
+
+#### 5. Cloudflare Pages
+
+**Project:** hartzell-hr-frontend
+**Production URL:** https://app.hartzell.work
+**Latest Deployment:** ba780ac1.hartzell-hr-frontend.pages.dev
+**Build Command:** `npm run build` (generates static export to `out/`)
+**Output Directory:** `out/`
+
+**Environment Variables:**
+- `NEXT_PUBLIC_API_URL` = `https://hartzell.work/api`
+- `NEXT_PUBLIC_HCAPTCHA_SITE_KEY` = (hCaptcha site key)
+
+### Secrets (Cloudflare Workers)
+
+Stored securely, accessed via `env` parameter:
+
+1. **BITRIX24_WEBHOOK_URL** - Bitrix24 REST API webhook
+2. **SESSION_SECRET** - 32-byte hex string for session encryption
+3. **HCAPTCHA_SECRET** - hCaptcha secret key for verification
+
+### Environment Variables (wrangler.toml)
+
+```toml
+[vars]
+BITRIX24_ENTITY_TYPE_ID = "1054"
+SESSION_MAX_AGE = "28800"          # 8 hours in seconds
+RATE_LIMIT_MAX_ATTEMPTS = "5"
+RATE_LIMIT_WINDOW = "900"          # 15 minutes in seconds
+```
+
+---
+
+## Authentication & Security
+
+### Authentication Flow
+
+#### Tier 1: Badge Number + DOB
+```
+POST /api/auth/login
 {
-  "framework": "Next.js 14.2+",
-  "language": "TypeScript 5.3+",
-  "runtime": "Node.js 20+",
-  "styling": {
-    "primary": "Tailwind CSS 3.4+",
-    "components": "shadcn/ui",
-    "icons": "Lucide React"
-  },
-  "stateManagement": {
-    "global": "Zustand",
-    "server": "React Server Components",
-    "forms": "React Hook Form"
-  },
-  "validation": "Zod",
-  "api": {
-    "client": "Bitrix24 REST API",
-    "fetching": "native fetch with middleware"
-  },
-  "authentication": "NextAuth.js v5",
-  "fileHandling": {
-    "pdf": "react-pdf + jsPDF",
-    "docx": "@docx/docx",
-    "excel": "xlsx"
-  },
-  "dates": "date-fns",
-  "charts": "Recharts",
-  "notifications": "React Hot Toast",
-  "deployment": "Vercel",
-  "monitoring": "Vercel Analytics + Sentry"
+  "badgeNumber": "EMP1001",
+  "dateOfBirth": "1990-01-15"
+}
+
+Success Response (200):
+{
+  "success": true,
+  "authLevel": 1,
+  "employeeId": 123,
+  "fullName": "John Doe",
+  "nextStep": "verify-ssn"
+}
+
+Error Response (401):
+{
+  "error": "Invalid credentials",
+  "remainingAttempts": 4
+}
+
+Error Response (429):
+{
+  "error": "Too many attempts. Please try again later.",
+  "requiresCaptcha": true,
+  "retryAfter": 900
 }
 ```
+
+**Process:**
+1. Client sends badge number and DOB
+2. Worker queries Bitrix24 via `BitrixClient.getEmployeeByBadgeNumber()`
+3. If found, compare DOB (format: YYYY-MM-DD)
+4. If match, create session with `authLevel: 1`
+5. Return session cookie (HttpOnly, Secure, SameSite=Strict)
+
+#### Tier 2: Employee ID Verification
+```
+Employee ID is displayed on screen after Tier 1 success.
+Employee must verify the displayed ID matches their badge.
+This is UI-only, no API call required.
+```
+
+#### Tier 3: SSN + CAPTCHA
+```
+POST /api/auth/verify-ssn
+{
+  "ssnLast4": "1234",
+  "captchaToken": "..."
+}
+
+Success Response (200):
+{
+  "success": true,
+  "authLevel": 3,
+  "csrfToken": "...",
+  "employee": {
+    "badgeNumber": "EMP1001",
+    "fullName": "John Doe",
+    "position": "Project Manager",
+    "department": "Operations"
+  }
+}
+
+Error Response (401):
+{
+  "error": "Invalid SSN",
+  "remainingAttempts": 3
+}
+
+Error Response (400):
+{
+  "error": "Invalid or expired CAPTCHA token"
+}
+```
+
+**Process:**
+1. Worker verifies session exists with `authLevel >= 1`
+2. Verify hCaptcha token with hCaptcha API
+3. Fetch employee full SSN from Bitrix24
+4. Compare last 4 digits
+5. If match, upgrade session to `authLevel: 3`
+6. Generate CSRF token, store in session
+7. Return CSRF token in response
+
+### Session Management
+
+**Implementation:** Encrypted cookie-based sessions
+
+**Session Data:**
+```typescript
+interface SessionData {
+  sessionId: string;         // UUID
+  employeeId: number;        // Internal ID
+  bitrixId: number;          // Bitrix24 entity ID
+  fullName: string;
+  badgeNumber: string;
+  authLevel: 1 | 2 | 3;      // Authentication tier
+  createdAt: number;         // Unix timestamp
+  expiresAt: number;         // Unix timestamp (createdAt + 8 hours)
+  lastActivity: number;      // Unix timestamp
+  csrfToken?: string;        // Set after Tier 3 auth
+  isAdmin?: boolean;         // Admin session flag
+}
+```
+
+**Cookie Properties:**
+- Name: `hr_session`
+- HttpOnly: true (prevents JavaScript access)
+- Secure: true (HTTPS only)
+- SameSite: Strict (CSRF protection)
+- Max-Age: 28800 seconds (8 hours)
+- Encrypted: AES-256-GCM with SESSION_SECRET
+
+**Session Storage:**
+- Stored in D1 `sessions` table
+- Indexed by `id` (session ID)
+- Cleaned up on expiry (automatic via worker cron or on-demand)
+
+**Session Validation:**
+```typescript
+async function validateSession(cookie: string, env: Env): Promise<SessionData | null> {
+  // 1. Decrypt cookie
+  const sessionId = await decryptCookie(cookie, env.SESSION_SECRET);
+
+  // 2. Query D1
+  const session = await env.DB.prepare(
+    'SELECT * FROM sessions WHERE id = ? AND expires_at > ?'
+  ).bind(sessionId, Date.now()).first();
+
+  if (!session) return null;
+
+  // 3. Update last_activity
+  await env.DB.prepare(
+    'UPDATE sessions SET last_activity = ? WHERE id = ?'
+  ).bind(Date.now(), sessionId).run();
+
+  return session as SessionData;
+}
+```
+
+### Rate Limiting
+
+**Configuration:**
+- Max attempts: 5 per 15 minutes per IP address
+- Tracked in D1 `login_attempts` table
+- After 5 failed attempts, CAPTCHA required
+- Cleanup: Delete attempts older than 15 minutes on each request
+
+**Implementation:**
+```typescript
+async function checkRateLimit(ip: string, env: Env): Promise<{ allowed: boolean; remaining: number }> {
+  const windowStart = Date.now() - 900000; // 15 minutes ago
+
+  // Cleanup old attempts
+  await env.DB.prepare(
+    'DELETE FROM login_attempts WHERE attempt_time < ?'
+  ).bind(windowStart).run();
+
+  // Count recent attempts
+  const result = await env.DB.prepare(
+    'SELECT COUNT(*) as count FROM login_attempts WHERE ip_address = ? AND attempt_time >= ? AND success = 0'
+  ).bind(ip, windowStart).first();
+
+  const attempts = result.count;
+  const remaining = 5 - attempts;
+
+  return {
+    allowed: attempts < 5,
+    remaining: Math.max(0, remaining)
+  };
+}
+```
+
+### CSRF Protection
+
+**Token Generation:**
+- 32-byte random hex string
+- Generated after Tier 3 authentication
+- Stored in session
+- Sent to client in response body (NOT in cookie)
+
+**Validation:**
+- Required on POST, PUT, PATCH, DELETE requests
+- Sent in `X-CSRF-Token` header
+- Worker compares header token with session token
+- If mismatch, return 403 Forbidden
+
+**Frontend Implementation:**
+```typescript
+// API client stores CSRF token
+class ApiClient {
+  private csrfToken: string | null = null;
+
+  setCsrfToken(token: string) {
+    this.csrfToken = token;
+  }
+
+  async request(endpoint: string, options: RequestInit) {
+    const headers = { ...options.headers };
+
+    // Add CSRF token for state-changing requests
+    if (this.csrfToken && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options.method)) {
+      headers['X-CSRF-Token'] = this.csrfToken;
+    }
+
+    return fetch(endpoint, { ...options, headers, credentials: 'include' });
+  }
+}
+```
+
+### Security Headers
+
+**Set by Worker on all responses:**
+```typescript
+{
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'X-XSS-Protection': '1; mode=block',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Permissions-Policy': 'geolocation=(), microphone=(), camera=()',
+  'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+}
+```
+
+### Sensitive Data Handling
+
+**Fields Redacted from Logs:**
+```typescript
+const SENSITIVE_FIELDS = [
+  'ufCrm6Ssn',
+  'ufCrm6BankRouting',
+  'ufCrm6BankAccountNumber',
+  'ufCrm6DependentSsns'
+];
+
+function redactSensitiveFields(data: Record<string, any>): Record<string, any> {
+  const redacted = { ...data };
+  for (const field of SENSITIVE_FIELDS) {
+    if (redacted[field]) {
+      redacted[field] = '[REDACTED]';
+    }
+  }
+  return redacted;
+}
+```
+
+**Bitrix24 Encryption:**
+- Sensitive fields stored encrypted at rest in Bitrix24
+- Worker does not perform additional encryption
+- Data transmitted over HTTPS only
 
 ---
 
 ## Data Model
 
-### Bitrix24 Entity: HR Center (Type ID: 1054)
+### Bitrix24 Entity
 
-#### Core Employee Fields
+**Entity Type ID:** 1054 (HR Center SPA)
 
+**100+ Custom Fields** (prefix `ufCrm6*`):
+
+#### Personal Information (18 fields)
 ```typescript
-interface Employee {
-  // System Fields
-  id: number;
-  entityTypeId: 1054;
-  title: string; // "FirstName LastName - Position"
-  categoryId: 10 | 18; // Pipeline: Onboarding | Recruitment
-  stageId: string; // Current stage in pipeline
-  createdTime: string;
-  updatedTime: string;
-
-  // Personal Information
-  ufCrm6Name: string; // First Name *required
-  ufCrm6SecondName?: string; // Middle Name
-  ufCrm6LastName: string; // Last Name *required
-  ufCrm6PersonalBirthday: string; // Date of Birth *required
-  ufCrm6PersonalGender: 2002 | 2003; // Female | Male *required
-  ufCrm6Ssn: string; // Social Security Number *required
-  ufCrm6Email: string[]; // Email addresses *required, multiple
-  ufCrm6PersonalMobile: string[]; // Personal phone *required, multiple
-  ufCrm6WorkPhone?: string;
-  ufCrm6PersonalPhone?: string;
-  ufCrm6UfLegalAddress?: string;
-
-  // Emergency Contact
-  ufCrm6EmergencyContactName: string; // *required
-  ufCrm6EmergencyContactPhone: string; // *required
-  ufCrm6Relationship: string; // *required
-
-  // Additional Personal
-  ufCrm6MaritalStatus?: 2021 | 2022 | 2023 | 2024 | 2025;
-  // Single | Married | Divorced | Widowed | Separated
-  ufCrm6Citizenship: 2026 | 2027 | 2028 | 2029;
-  // US Citizen | Permanent Resident | Work Visa | Other *required
-  ufCrm6ProfilePhoto?: number; // File ID
-
-  // Employment Details
-  ufCrm6WorkPosition: string; // Position *required
-  ufCrm6EmploymentType: 2030 | 2031 | 2032 | 2033 | 2034 | 2035;
-  // Full-Time | Part-Time | Contract | Temporary | Intern | Seasonal *required
-  ufCrm6EmploymentStartDate?: string;
-  ufCrm6EmploymentStatus?: "Y" | "N"; // Active or Inactive
-  ufCrm6PayRate?: string;
-  ufCrm6BenefitsEligible?: "Y" | "N";
-  ufCrm6PtoDays?: string;
-  ufCrm6Subsidiary?: 2010 | 2012 | 2013 | 2014; // Company entity
-  ufCrm6BadgeNumber: string; // Employee ID *required
-  ufCrm6WcCode?: number; // Workers' Comp code
-
-  // Termination
-  ufCrm6TerminationDate?: string;
-  ufCrm6RehireEligible?: "Y" | "N";
-
-  // Documents
-  ufCrm6HiringPaperwork: number[]; // File IDs *required
-  ufCrm6BackgroundCheck?: number;
-  ufCrm6DrugTest?: number[];
-  ufCrm6Nda?: number;
-  ufCrm6Noncompete?: number;
-  ufCrm6HandbookAck: number; // *required
-  ufCrm6WorkVisa?: number;
-  ufCrm6VisaExpiry?: string;
-
-  // Tax & Banking
-  ufCrm6TaxFilingStatus: 2039 | 2040 | 2041 | 2042;
-  // Single | Married Filing Jointly | Married Filing Separately | Head of Household *required
-  ufCrm6DependentsInfo?: string[];
-  ufCrm6DependentNames?: string[];
-  ufCrm6DependentSsns?: string[];
-  ufCrm6DependentRelationships?: string[];
-  ufCrm6AdditionalFedWithhold?: string;
-  ufCrm6AdditionalStateWithhold?: string;
-  ufCrm6MultipleJobsWorksheet?: number;
-  ufCrm6DeductionsWorksheet?: number;
-  ufCrm_6_W4_EXEMPTIONS?: string;
-  ufCrm_6_UF_W4_FILE?: number[];
-  ufCrm_6_UF_I9_FILE?: number[];
-
-  ufCrm6BankName?: string;
-  ufCrm6BankAccountName?: string;
-  ufCrm6BankAccountType?: 2036 | 2037 | 2038; // Checking | Savings | Money Market
-  ufCrm6BankRouting?: string;
-  ufCrm6BankAccountNumber?: string;
-  ufCrm6DirectDeposit?: number;
-
-  // Benefits
-  ufCrm6HealthInsurance?: number;
-  ufCrm_6_401K_ENROLLMENT?: number;
-  ufCrm6LifeBeneficiaries?: string;
-
-  // Equipment & IT
-  ufCrm6EquipmentAssigned?: string[]; // JSON array of equipment
-  ufCrm6SoftwareAccess?: string[];
-  ufCrm6AccessPermissions?: string[];
-  ufCrm6AccessLevel?: 2057 | 2058 | 2059 | 2060;
-  // Basic User | Power User | Administrator | Super Admin
-  ufCrm6SecurityClearance?: 2061 | 2062 | 2063 | 2064;
-  // None | Confidential | Secret | Top Secret
-  ufCrm6EquipmentStatus?: 2065 | 2066 | 2067 | 2068;
-  // Issued | Returned | Lost | Damaged
-  ufCrm6NetworkStatus?: 2069 | 2070 | 2071 | 2072;
-  // Active | Inactive | Suspended | Disabled
-  ufCrm6VpnAccess?: "Y" | "N";
-  ufCrm6RemoteAccess?: "Y" | "N";
-
-  // Training & Development
-  ufCrm6RequiredTraining: 2073 | 2074 | 2075 | 2076;
-  // Not Started | In Progress | Completed | Expired *required
-  ufCrm6SafetyTraining: 2073 | 2074 | 2075 | 2076; // *required
-  ufCrm6ComplianceTraining: 2073 | 2074 | 2075 | 2076; // *required
-  ufCrm6TrainingComplete?: number[];
-  ufCrm6Certifications?: number[];
-  ufCrm6TrainingRecords?: number[];
-  ufCrm6SkillsAssessment?: number;
-  ufCrm6TrainingDocs?: number[];
-  ufCrm6SkillsLevel?: string;
-  ufCrm6TrainingDate?: string;
-  ufCrm6NextTrainingDue?: string;
-  ufCrm6TrainingNotes?: string;
-
-  // Performance
-  ufCrm6ReviewDate?: string[];
-
-  // Metadata
-  assignedById: number;
-  lastActivityBy: number;
-  lastActivityTime: string;
-  observers?: number[];
-  contactIds?: number[];
-}
+ufCrm6Name: string;                  // First Name
+ufCrm6SecondName?: string;           // Middle Name
+ufCrm6LastName: string;              // Last Name
+ufCrm6PreferredName?: string;        // Preferred Name
+ufCrm6PersonalBirthday: string;      // Date of Birth (YYYY-MM-DD)
+ufCrm6PersonalGender: "Male" | "Female" | "Other";
+ufCrm6MaritalStatus?: "Single" | "Married" | "Divorced" | "Widowed" | "Separated";
+ufCrm6Citizenship: string;           // US Citizen, Permanent Resident, etc.
+ufCrm6Email: string[];               // Email addresses (array)
+ufCrm6PersonalMobile: string[];      // Personal phone (array)
+ufCrm6WorkPhone?: string;
+ufCrm6PersonalPhone?: string;
+ufCrm6Ssn: string;                   // Social Security Number (encrypted)
+ufCrm6DriversLicenseNumber?: string;
+ufCrm6DriversLicenseState?: string;
+ufCrm6DriversLicenseExpiry?: string;
+ufCrm6VeteranStatus?: string;
+ufCrm6Ethnicity?: string;
 ```
 
-### Pipeline Stages
-
-#### Recruitment Pipeline (Category ID: 18)
-
+#### Contact Information (8 fields)
 ```typescript
-enum RecruitmentStage {
-  APP_INCOMPLETE = "DT1054_18:NEW",      // Application started but not submitted
-  UNDER_REVIEW = "DT1054_18:PREPARATION", // Application under review
-  OFFERED = "DT1054_18:SUCCESS",          // Offer extended
-  REJECTED = "DT1054_18:FAIL"             // Application rejected
-}
+ufCrm6MailingAddress?: string;
+ufCrm6MailingCity?: string;
+ufCrm6MailingState?: string;
+ufCrm6MailingZip?: string;
+ufCrm6PhysicalAddress?: string;
+ufCrm6PhysicalCity?: string;
+ufCrm6PhysicalState?: string;
+ufCrm6PhysicalZip?: string;
 ```
 
-#### Onboarding Pipeline (Category ID: 10)
-
+#### Emergency Contacts (20 fields - 2 contacts)
 ```typescript
-enum OnboardingStage {
-  INCOMPLETE = "DT1054_10:NEW",       // Onboarding not started
-  DOCS_PENDING = "DT1054_10:PREPARATION", // Waiting for documents
-  IT_ACCESS = "DT1054_10:CLIENT",     // IT setup and access provisioning
-  HIRED = "DT1054_10:SUCCESS",        // Active employee
-  NOT_HIRED = "DT1054_10:FAIL"        // Did not complete onboarding
-}
+// Primary Emergency Contact
+ufCrm6EmergencyContactName: string;
+ufCrm6Relationship: string;
+ufCrm6EmergencyContactPhone: string;
+ufCrm6EmergencyContactEmail?: string;
+ufCrm6EmergencyContactAddress?: string;
+ufCrm6EmergencyContactCity?: string;
+ufCrm6EmergencyContactState?: string;
+ufCrm6EmergencyContactZip?: string;
+ufCrm6EmergencyContactCitizenship?: string;
+ufCrm6EmergencyContactBirthday?: string;
+
+// Secondary Emergency Contact
+ufCrm6EmergencyContact2Name?: string;
+ufCrm6EmergencyContact2Relationship?: string;
+ufCrm6EmergencyContact2Phone?: string;
+ufCrm6EmergencyContact2Email?: string;
+ufCrm6EmergencyContact2Address?: string;
+ufCrm6EmergencyContact2City?: string;
+ufCrm6EmergencyContact2State?: string;
+ufCrm6EmergencyContact2Zip?: string;
+ufCrm6EmergencyContact2Citizenship?: string;
+ufCrm6EmergencyContact2Birthday?: string;
 ```
 
----
+#### Employment Information (12 fields)
+```typescript
+ufCrm6BadgeNumber: string;           // Employee ID (unique)
+ufCrm6WorkPosition: string;          // Job Title
+ufCrm6Subsidiary: string;            // Company/Division
+ufCrm6EmploymentType: "Full-Time" | "Part-Time" | "Contract" | "Temporary";
+ufCrm6EmploymentStartDate?: string;  // Hire Date
+ufCrm6EmploymentStatus?: "Active" | "Inactive";
+ufCrm6PayRate?: number;
+ufCrm6BenefitsEligible?: "Y" | "N";
+ufCrm6PtoDays?: number;
+ufCrm6WcCode?: number;               // Workers' Comp code
+ufCrm6TerminationDate?: string;
+ufCrm6RehireEligible?: "Y" | "N";
+```
 
-## User Roles & Permissions
+#### Tax Information (12 fields)
+```typescript
+ufCrm6TaxFilingStatus: "Single" | "Married Filing Jointly" | "Married Filing Separately" | "Head of Household";
+ufCrm6W4Allowances?: number;
+ufCrm6AdditionalFedWithhold?: number;
+ufCrm6AdditionalStateWithhold?: number;
+ufCrm6StateOfResidence?: string;
+ufCrm6StateOfEmployment?: string;
+ufCrm6MultipleJobsWorksheet?: number;  // File ID
+ufCrm6DeductionsWorksheet?: number;    // File ID
+ufCrm_6_W4_EXEMPTIONS?: string;
+ufCrm_6_UF_W4_FILE?: number[];         // W-4 form file IDs
+ufCrm_6_UF_I9_FILE?: number[];         // I-9 form file IDs
+ufCrm6FederalExempt?: "Y" | "N";
+```
 
-### Role Definitions
+#### Banking Information (6 fields)
+```typescript
+ufCrm6BankName?: string;
+ufCrm6BankAccountName?: string;
+ufCrm6BankAccountType?: "Checking" | "Savings" | "Money Market";
+ufCrm6BankRouting?: string;          // Encrypted
+ufCrm6BankAccountNumber?: string;    // Encrypted
+ufCrm6DirectDeposit?: number;        // File ID (voided check)
+```
+
+#### Dependent Information (24 fields - up to 4 dependents)
+```typescript
+ufCrm6DependentNames?: string[];         // Array of names
+ufCrm6DependentSsns?: string[];          // Array of SSNs (encrypted)
+ufCrm6DependentRelationships?: string[]; // Array of relationships
+ufCrm6DependentBirthdates?: string[];    // Array of DOBs
+ufCrm6DependentGenders?: string[];       // Array of genders
+ufCrm6DependentCitizenships?: string[];  // Array of citizenships
+```
+
+#### Immigration Status (4 fields)
+```typescript
+ufCrm6WorkVisa?: number;             // Visa document file ID
+ufCrm6VisaType?: string;
+ufCrm6VisaExpiry?: string;
+ufCrm6WorkAuthorization?: string;
+```
+
+### Field Mapping (Frontend ↔ Bitrix24)
+
+**Defined in:** `/cloudflare-app/workers/routes/admin.ts`
 
 ```typescript
-enum UserRole {
-  APPLICANT = "applicant",       // Public - can apply
-  EMPLOYEE = "employee",         // Can view own data
-  MANAGER = "manager",           // Can view/manage team
-  HR_SPECIALIST = "hr_specialist", // Can manage all employees
-  HR_ADMIN = "hr_admin",         // Full system access
-  SUPER_ADMIN = "super_admin"    // System configuration
-}
+const FIELD_MAP: Record<string, string> = {
+  // Frontend camelCase → Bitrix24 ufCrm6*
+  firstName: 'ufCrm6Name',
+  middleName: 'ufCrm6SecondName',
+  lastName: 'ufCrm6LastName',
+  preferredName: 'ufCrm6PreferredName',
+  dateOfBirth: 'ufCrm6PersonalBirthday',
+  gender: 'ufCrm6PersonalGender',
+  maritalStatus: 'ufCrm6MaritalStatus',
+  citizenship: 'ufCrm6Citizenship',
+  personalEmail: 'ufCrm6Email',
+  personalPhone: 'ufCrm6PersonalMobile',
+  ssn: 'ufCrm6Ssn',
 
-interface Permission {
-  resource: string;
-  actions: ("create" | "read" | "update" | "delete")[];
-  conditions?: {
-    own?: boolean;       // Can only access own records
-    team?: boolean;      // Can access team records
-    department?: boolean; // Can access department records
-  };
-}
+  // ... 95+ more mappings
 
-const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
-  applicant: [
-    { resource: "application", actions: ["create", "read"], conditions: { own: true } },
-    { resource: "application_status", actions: ["read"], conditions: { own: true } }
-  ],
-  employee: [
-    { resource: "profile", actions: ["read", "update"], conditions: { own: true } },
-    { resource: "documents", actions: ["read", "create"], conditions: { own: true } },
-    { resource: "time_off", actions: ["create", "read"], conditions: { own: true } },
-    { resource: "performance_review", actions: ["read"], conditions: { own: true } }
-  ],
-  manager: [
-    // Inherits employee permissions
-    { resource: "team_profiles", actions: ["read"], conditions: { team: true } },
-    { resource: "performance_review", actions: ["create", "read", "update"], conditions: { team: true } },
-    { resource: "disciplinary_action", actions: ["create", "read"], conditions: { team: true } },
-    { resource: "time_off_approval", actions: ["read", "update"], conditions: { team: true } }
-  ],
-  hr_specialist: [
-    { resource: "employees", actions: ["create", "read", "update"], conditions: { department: true } },
-    { resource: "onboarding", actions: ["create", "read", "update", "delete"] },
-    { resource: "performance_review", actions: ["create", "read", "update"] },
-    { resource: "disciplinary_action", actions: ["create", "read", "update"] },
-    { resource: "offboarding", actions: ["create", "read", "update"] },
-    { resource: "reports", actions: ["read"] }
-  ],
-  hr_admin: [
-    // Full access to all employee operations
-    { resource: "*", actions: ["create", "read", "update", "delete"] }
-  ],
-  super_admin: [
-    // Full system access including configuration
-    { resource: "*", actions: ["create", "read", "update", "delete"] },
-    { resource: "system_config", actions: ["create", "read", "update", "delete"] },
-    { resource: "user_roles", actions: ["create", "read", "update", "delete"] }
-  ]
+  badgeNumber: 'ufCrm6BadgeNumber',
+  position: 'ufCrm6WorkPosition',
+  department: 'ufCrm6Subsidiary',
+  hireDate: 'ufCrm6EmploymentStartDate',
 };
 ```
 
----
-
-## Module Specifications
-
-### Module 1: Employment Application
-
-**User Story:**
-> As a job applicant, I want to submit my employment application online so that I can apply for positions at Hartzell Companies without filling out paper forms.
-
-**Features:**
-- Public-facing application form
-- Form validation with real-time feedback
-- Resume/document upload
-- Auto-save draft functionality
-- Application status tracking
-- Email confirmation upon submission
-
-**Workflow:**
-1. Applicant visits `/apply` page
-2. Fills out multi-step form:
-   - Personal Information
-   - Position Details
-   - Employment History
-   - Education
-   - References
-   - Certification & Authorization
-3. Uploads resume and other documents
-4. Submits application
-5. System creates record in Bitrix24 (Recruitment pipeline, "App Incomplete" stage)
-6. Applicant receives confirmation email
-7. HR notified of new application
-
-**API Endpoints:**
+**Usage:**
 ```typescript
-POST /api/applications/create
-  Request: ApplicationFormData
-  Response: { applicationId: number, status: "submitted" }
+// Converting frontend data to Bitrix24 format
+const bitrixFields: Record<string, any> = {};
+for (const [frontendKey, value] of Object.entries(formData)) {
+  const bitrixKey = FIELD_MAP[frontendKey];
+  if (bitrixKey) {
+    bitrixFields[bitrixKey] = value;
+  }
+}
 
-GET /api/applications/:id/status
-  Response: { stage: RecruitmentStage, updatedAt: string }
-
-POST /api/applications/:id/upload-document
-  Request: FormData (file)
-  Response: { fileId: number, fileName: string }
-```
-
-**Bitrix24 Mapping:**
-- Creates item in entity 1054, category 18 (Recruitment)
-- Stage: DT1054_18:NEW (App Incomplete)
-- Fills required fields: Name, Email, Phone, Position, etc.
-- Uploads files to ufCrm6HiringPaperwork
-
----
-
-### Module 2: Onboarding Workflow
-
-**User Story:**
-> As an HR specialist, I want to manage the new hire onboarding process digitally so that I can ensure all steps are completed and documented.
-
-**Features:**
-- New hire checklist (35+ items)
-- Document collection portal
-- Background check authorization
-- Equipment assignment tracking
-- Progress dashboard
-- Automated email notifications
-- Task assignments
-
-**Workflow:**
-1. HR moves applicant from Recruitment to Onboarding pipeline
-2. System auto-generates onboarding checklist
-3. New hire receives welcome email with portal link
-4. New hire completes:
-   - Personal information verification
-   - Emergency contact info
-   - Tax forms (W-4, state withholding)
-   - Direct deposit setup
-   - Handbook acknowledgment
-   - Background check authorization
-5. HR completes:
-   - IT setup (email, computer, phone)
-   - Benefits enrollment setup
-   - Training schedule
-   - Badge/access provisioning
-6. Manager completes:
-   - Welcome orientation
-   - Role-specific training
-7. System tracks completion percentage
-8. When 100% complete, moves to "Hired" stage
-
-**Checklist Categories:**
-1. **Employee Information** (4 items)
-   - Name, Position, Department, Hire Date
-2. **Pre-Employment Requirements** (6 items)
-   - Application, Background Check, Drug Test, References, Offer Letter, NDA
-3. **Day 1 Requirements** (8 items)
-   - I-9, W-4, State Tax, Driver's License, SSN Card, Direct Deposit, Emergency Contact, Handbook
-4. **Payroll & Benefits** (5 items)
-   - Paycom Setup, Health Insurance Date, Colonial Life Date, 401(k) Date, PTO Setup
-5. **IT & Equipment** (10 items)
-   - Email, Computer, Phone, Vehicle, Keys, Badge, System Access, Timecard, Gas Card, Credit Card
-6. **Training & Orientation** (6 items)
-   - Orientation, Safety Training, Job Training, Mentor, 30-Day Review, 90-Day Review
-
-**API Endpoints:**
-```typescript
-GET /api/onboarding/:employeeId/checklist
-  Response: ChecklistItem[]
-
-PUT /api/onboarding/:employeeId/checklist/:itemId
-  Request: { completed: boolean, completedBy: number, notes?: string }
-  Response: { success: boolean }
-
-POST /api/onboarding/:employeeId/move-stage
-  Request: { targetStage: OnboardingStage }
-  Response: { success: boolean, newStage: string }
-```
-
-**Bitrix24 Mapping:**
-- Updates item in entity 1054, category 10 (Onboarding)
-- Progresses through stages: NEW → PREPARATION → CLIENT → SUCCESS
-- Updates multiple field groups based on checklist completion
-
----
-
-### Module 3: Employee Management
-
-**User Story:**
-> As an employee, I want to view and update my personal information so that my records are always current.
-
-**Features:**
-- Employee directory
-- Profile view/edit
-- Document repository
-- Emergency contact management
-- Personal information updates
-- Request workflows (address change, name change, etc.)
-
-**Dashboard Sections:**
-1. **Personal Info** - View/edit basic information
-2. **Documents** - View uploaded documents, upload new
-3. **Benefits** - View benefit enrollment, eligibility dates
-4. **Equipment** - View assigned equipment
-5. **Time Off** - View PTO balance, request time off
-6. **Performance** - View performance review history
-
-**API Endpoints:**
-```typescript
-GET /api/employees/:id
-  Response: Employee
-
-PUT /api/employees/:id/profile
-  Request: Partial<Employee>
-  Response: { success: boolean }
-
-GET /api/employees/:id/documents
-  Response: Document[]
-
-POST /api/employees/:id/documents
-  Request: FormData
-  Response: { fileId: number }
+// Send to Bitrix24
+await bitrixClient.updateEmployee(bitrixId, bitrixFields);
 ```
 
 ---
 
-### Module 4: Performance Management
+## API Specification
 
-**User Story:**
-> As a manager, I want to conduct performance reviews digitally so that I can provide structured feedback and track employee development.
+### Authentication Endpoints
 
-**Features:**
-- Review cycle management
-- 7-category rating system (1-5 stars)
-- Goal setting and tracking
-- Review history
-- PDF export
-- E-signature capture
+#### POST /api/auth/login
+Tier 1 authentication (Badge Number + DOB).
 
-**Review Categories:**
-1. Job Knowledge & Skills
-2. Quality of Work
-3. Productivity & Efficiency
-4. Communication Skills
-5. Teamwork & Collaboration
-6. Attendance & Punctuality
-7. Safety Compliance
-
-**Workflow:**
-1. Manager initiates review for employee
-2. Employee completes self-assessment (optional)
-3. Manager rates each category, adds comments
-4. System calculates overall rating
-5. Manager writes summary, sets goals
-6. Review meeting conducted
-7. Both parties sign digitally
-8. Review saved to employee record
-9. Next review date scheduled
-
-**API Endpoints:**
-```typescript
-POST /api/reviews/create
-  Request: { employeeId: number, reviewType: string, reviewDate: string }
-  Response: { reviewId: number }
-
-PUT /api/reviews/:id/ratings
-  Request: { category: string, rating: 1-5, comments?: string }
-  Response: { success: boolean }
-
-POST /api/reviews/:id/submit
-  Request: { signature: string }
-  Response: { success: boolean, pdfUrl: string }
+**Request:**
+```json
+{
+  "badgeNumber": "EMP1001",
+  "dateOfBirth": "1990-01-15"
+}
 ```
 
----
-
-### Module 5: Disciplinary Actions
-
-**User Story:**
-> As an HR specialist, I want to document disciplinary actions so that we have a clear record of employee conduct issues and corrective actions.
-
-**Features:**
-- 4-level progressive discipline system
-- Incident documentation
-- Corrective action plans
-- Improvement deadlines
-- E-signature capture
-- Disciplinary history tracking
-
-**Discipline Levels:**
-1. Verbal Warning
-2. First Written Warning
-3. Second Written Warning / Probation
-4. Final Warning / Termination
-
-**Violation Types:**
-- Tardiness
-- Absenteeism
-- Safety Violation
-- Quality of Work
-- Unprofessional Conduct
-- Policy Violation
-- Poor Performance
-- Insubordination
-- Other
-
-**API Endpoints:**
-```typescript
-POST /api/disciplinary/create
-  Request: DisciplinaryActionForm
-  Response: { actionId: number }
-
-GET /api/disciplinary/:employeeId/history
-  Response: DisciplinaryAction[]
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "authLevel": 1,
+  "employeeId": 123,
+  "fullName": "John Doe"
+}
 ```
 
----
+**Error Responses:**
+- 401: Invalid credentials
+- 429: Too many attempts (rate limit exceeded)
+- 500: Server error
 
-### Module 6: Offboarding & Termination
+#### POST /api/auth/verify-ssn
+Tier 3 authentication (SSN last 4 + CAPTCHA).
 
-**User Story:**
-> As an HR admin, I want to process employee terminations systematically so that all exit procedures are completed and company property is recovered.
-
-**Features:**
-- Termination letter generation
-- Property return checklist
-- Exit interview scheduling
-- Final paycheck calculation
-- Benefits termination
-- System access revocation tracking
-- Rehire eligibility designation
-
-**Workflow:**
-1. HR initiates termination for employee
-2. Selects termination type and reason
-3. Sets termination date
-4. Reviews property return checklist
-5. Generates termination letter
-6. Prints/emails letter
-7. Tracks exit interview
-8. Verifies property returns
-9. Processes final paycheck
-10. Updates employee status to Inactive
-11. Archives employee record
-
-**API Endpoints:**
-```typescript
-POST /api/termination/initiate
-  Request: TerminationForm
-  Response: { terminationId: number }
-
-POST /api/termination/:id/generate-letter
-  Response: { letterPdf: string }
-
-PUT /api/termination/:id/complete
-  Request: { propertyReturned: boolean[], finalPaycheck: boolean }
-  Response: { success: boolean }
+**Request:**
+```json
+{
+  "ssnLast4": "1234",
+  "captchaToken": "hcaptcha_token_here"
+}
 ```
 
----
-
-## API Integration
-
-### Bitrix24 REST API Client
-
-```typescript
-// lib/bitrix24/client.ts
-class Bitrix24Client {
-  private baseUrl = "https://hartzell.app/rest/1/jp689g5yfvre9pvd";
-
-  async request<T>(method: string, params?: Record<string, any>): Promise<T> {
-    const response = await fetch(`${this.baseUrl}/${method}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams(params || {})
-    });
-
-    const data = await response.json();
-
-    if (data.error) {
-      throw new Bitrix24Error(data.error, data.error_description);
-    }
-
-    return data.result as T;
-  }
-
-  // Employee CRUD
-  async createEmployee(data: Partial<Employee>): Promise<number> {
-    const result = await this.request("crm.item.add", {
-      entityTypeId: 1054,
-      fields: this.prepareFields(data)
-    });
-    return result.item.id;
-  }
-
-  async getEmployee(id: number): Promise<Employee> {
-    const result = await this.request("crm.item.get", {
-      entityTypeId: 1054,
-      id
-    });
-    return this.mapFields(result.item);
-  }
-
-  async updateEmployee(id: number, data: Partial<Employee>): Promise<boolean> {
-    await this.request("crm.item.update", {
-      entityTypeId: 1054,
-      id,
-      fields: this.prepareFields(data)
-    });
-    return true;
-  }
-
-  async listEmployees(filters?: Record<string, any>): Promise<Employee[]> {
-    const result = await this.request("crm.item.list", {
-      entityTypeId: 1054,
-      filter: filters
-    });
-    return result.items.map(this.mapFields);
-  }
-
-  // File operations
-  async uploadFile(employeeId: number, file: File, fieldName: string): Promise<number> {
-    const formData = new FormData();
-    formData.append("entityTypeId", "1054");
-    formData.append("id", employeeId.toString());
-    formData.append(`fields[${fieldName}]`, file);
-
-    const response = await fetch(`${this.baseUrl}/crm.item.update`, {
-      method: "POST",
-      body: formData
-    });
-
-    const data = await response.json();
-    return data.result.item[fieldName];
-  }
-
-  // Pipeline operations
-  async moveStage(id: number, stageId: string): Promise<boolean> {
-    await this.request("crm.item.update", {
-      entityTypeId: 1054,
-      id,
-      fields: { stageId }
-    });
-    return true;
-  }
-
-  private prepareFields(data: Partial<Employee>): Record<string, any> {
-    // Convert TypeScript Employee object to Bitrix24 field format
-    // Handle array fields, enum values, etc.
-  }
-
-  private mapFields(item: any): Employee {
-    // Convert Bitrix24 response to TypeScript Employee object
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "authLevel": 3,
+  "csrfToken": "abc123...",
+  "employee": {
+    "badgeNumber": "EMP1001",
+    "fullName": "John Doe",
+    "position": "Project Manager",
+    "department": "Operations"
   }
 }
 ```
 
-### API Route Structure
+#### POST /api/auth/logout
+Terminate session.
 
-```typescript
-// app/api/employees/route.ts
-export async function GET(request: Request) {
-  const session = await getServerSession();
-  if (!session) return new Response("Unauthorized", { status: 401 });
-
-  const { searchParams } = new URL(request.url);
-  const filters = Object.fromEntries(searchParams);
-
-  const client = new Bitrix24Client();
-  const employees = await client.listEmployees(filters);
-
-  return Response.json(employees);
-}
-
-export async function POST(request: Request) {
-  const session = await getServerSession();
-  if (!session || !hasPermission(session.user, "employees", "create")) {
-    return new Response("Forbidden", { status: 403 });
-  }
-
-  const data = await request.json();
-  const validation = employeeSchema.safeParse(data);
-
-  if (!validation.success) {
-    return Response.json({ errors: validation.error.flatten() }, { status: 400 });
-  }
-
-  const client = new Bitrix24Client();
-  const employeeId = await client.createEmployee(validation.data);
-
-  await logAuditEvent({
-    action: "employee.created",
-    userId: session.user.id,
-    entityId: employeeId,
-    timestamp: new Date()
-  });
-
-  return Response.json({ employeeId }, { status: 201 });
+**Response (200):**
+```json
+{
+  "success": true
 }
 ```
 
----
+#### GET /api/auth/session
+Validate current session.
 
-## Security & Compliance
+**Response (200):**
+```json
+{
+  "valid": true,
+  "session": {
+    "employeeId": 123,
+    "fullName": "John Doe",
+    "badgeNumber": "EMP1001",
+    "authLevel": 3
+  }
+}
+```
 
-### Authentication
+### Employee Endpoints
 
-```typescript
-// auth.config.ts
-export const authConfig = {
-  providers: [
-    CredentialsProvider({
-      credentials: {
-        email: { type: "email" },
-        password: { type: "password" }
-      },
-      async authorize(credentials) {
-        const user = await getUserByEmail(credentials.email);
-        if (!user || !await verifyPassword(credentials.password, user.hashedPassword)) {
-          return null;
-        }
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role
-        };
-      }
-    })
-  ],
-  session: {
-    strategy: "jwt",
-    maxAge: 8 * 60 * 60 // 8 hours
-  },
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.role = user.role;
-      }
-      return token;
+#### GET /api/employee/profile
+Get authenticated employee's profile.
+
+**Authentication:** Required (authLevel >= 3)
+
+**Response (200):**
+```json
+{
+  "id": 123,
+  "badgeNumber": "EMP1001",
+  "firstName": "John",
+  "lastName": "Doe",
+  "position": "Project Manager",
+  "department": "Operations",
+  "email": ["john.doe@example.com"],
+  "phone": ["555-1234"],
+  // ... 95+ more fields
+}
+```
+
+#### PUT /api/employee/profile
+Update authenticated employee's profile.
+
+**Authentication:** Required (authLevel >= 3, CSRF token)
+
+**Request:**
+```json
+{
+  "field": "personalPhone",
+  "value": ["555-5678"]
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "employee": { /* updated employee data */ }
+}
+```
+
+### Admin Endpoints
+
+#### GET /api/admin/employees
+List all employees (admin only).
+
+**Authentication:** Admin session required
+
+**Query Parameters:**
+- `search` (optional): Search by name or badge
+- `department` (optional): Filter by department
+- `status` (optional): Filter by employment status
+
+**Response (200):**
+```json
+{
+  "employees": [
+    {
+      "bitrixId": 123,
+      "badgeNumber": "EMP1001",
+      "fullName": "John Doe",
+      "position": "Project Manager",
+      "department": "Operations",
+      "email": "john.doe@example.com",
+      "phone": "555-1234"
     },
-    async session({ session, token }) {
-      session.user.role = token.role as UserRole;
-      return session;
-    }
+    // ... more employees
+  ]
+}
+```
+
+#### POST /api/admin/employees/refresh
+Sync all employees from Bitrix24 to D1 cache.
+
+**Authentication:** Admin session required
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "count": 39,
+  "message": "Refreshed 39 employees from Bitrix24"
+}
+```
+
+#### GET /api/admin/employee/:bitrixId
+Get employee detail (admin only).
+
+**Authentication:** Admin session required
+
+**Response (200):**
+```json
+{
+  "employee": {
+    "id": 123,
+    "badgeNumber": "EMP1001",
+    // ... all 100+ fields
   }
-};
+}
 ```
 
-### Data Encryption
+#### PATCH /api/admin/employee/:bitrixId
+Update employee (admin only).
+
+**Authentication:** Admin session required, CSRF token
+
+**Request:**
+```json
+{
+  "firstName": "John",
+  "lastName": "Smith",
+  "position": "Senior Project Manager"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Employee updated successfully",
+  "employee": { /* updated employee data */ }
+}
+```
+
+### Template & Assignment Endpoints
+
+#### GET /api/admin/templates
+List PDF templates.
+
+**Authentication:** Admin session required
+
+**Query Parameters:**
+- `category` (optional): Filter by category
+- `active_only` (optional): Show only active templates
+
+**Response (200):**
+```json
+{
+  "templates": [
+    {
+      "id": "uuid-1234",
+      "filename": "W-4.pdf",
+      "category": "onboarding",
+      "description": "Federal Tax Withholding",
+      "fieldPositions": [...],
+      "active": true,
+      "createdAt": 1696291200000
+    }
+  ]
+}
+```
+
+#### POST /api/admin/templates
+Upload PDF template.
+
+**Authentication:** Admin session required, CSRF token
+
+**Request:** FormData with:
+- `file`: PDF file
+- `category`: Template category
+- `description`: Template description
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "template": {
+    "id": "uuid-1234",
+    "filename": "W-4.pdf",
+    "r2Key": "templates/uuid-1234.pdf"
+  }
+}
+```
+
+#### DELETE /api/admin/templates/:id
+Delete template.
+
+**Authentication:** Admin session required, CSRF token
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Template deleted"
+}
+```
+
+#### PUT /api/admin/templates/:id/fields
+Update template field positions.
+
+**Authentication:** Admin session required, CSRF token
+
+**Request:**
+```json
+{
+  "fieldPositions": [
+    {
+      "name": "firstName",
+      "type": "text",
+      "page": 1,
+      "x": 100,
+      "y": 200,
+      "width": 150,
+      "height": 20
+    }
+  ]
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Field positions updated"
+}
+```
+
+#### GET /api/admin/assignments
+List document assignments.
+
+**Authentication:** Admin session required
+
+**Query Parameters:**
+- `status` (optional): Filter by status
+- `employee_id` (optional): Filter by employee
+
+**Response (200):**
+```json
+{
+  "assignments": [
+    {
+      "id": 1,
+      "templateId": "uuid-1234",
+      "employeeBitrixId": 123,
+      "status": "pending",
+      "priority": "normal",
+      "dueDate": 1696550400000,
+      "createdAt": 1696291200000
+    }
+  ]
+}
+```
+
+#### POST /api/admin/assignments
+Create document assignment.
+
+**Authentication:** Admin session required, CSRF token
+
+**Request:**
+```json
+{
+  "templateId": "uuid-1234",
+  "employeeIds": [123, 456],
+  "priority": "high",
+  "dueDate": "2025-10-15",
+  "notes": "Complete by end of week"
+}
+```
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Created 2 assignments",
+  "assignments": [ /* assignment objects */ ]
+}
+```
+
+#### DELETE /api/admin/assignments/:id
+Delete assignment.
+
+**Authentication:** Admin session required, CSRF token
+
+**Response (200):**
+```json
+{
+  "success": true,
+  "message": "Assignment deleted"
+}
+```
+
+---
+
+## Frontend Application
+
+### Pages
+
+**Public:**
+- `/` - Landing page
+
+**Authentication:**
+- `/login` - Tier 1 auth (Badge + DOB)
+- `/login/verify-id` - Tier 2 auth (ID display)
+- `/login/verify-ssn` - Tier 3 auth (SSN + CAPTCHA)
+
+**Employee Portal:**
+- `/dashboard` - Employee dashboard
+- `/dashboard/profile` - View/edit profile
+- `/dashboard/documents` - View assigned documents
+- `/dashboard/tasks` - View pending tasks
+
+**Admin:**
+- `/admin` - Admin dashboard
+- `/admin/employees` - Employee directory
+- `/admin/employees/detail?id=:bitrixId` - Employee detail page
+- `/admin/templates` - Template management
+- `/admin/templates/upload` - Upload new template
+- `/admin/templates/:id/fields` - Field editor (drag-drop)
+- `/admin/assignments` - Assignment management
+
+### Components
+
+**shadcn/ui components used:**
+- Button, Input, Label, Select, Textarea
+- Card, CardHeader, CardContent
+- Dialog, AlertDialog
+- Table, TableHeader, TableBody, TableRow, TableCell
+- Tabs, TabsList, TabsTrigger, TabsContent
+- Badge, Avatar
+- Form, FormField, FormItem, FormLabel, FormControl, FormMessage
+- Toast, Toaster
+- Dropdown Menu, Context Menu
+- Separator, Skeleton, Progress
+
+**Custom components:**
+- `EmployeeTable` - Sortable employee list
+- `ProfileForm` - Multi-section employee profile editor
+- `TemplateUpload` - PDF upload with drag-drop
+- `FieldEditor` - Drag-drop field positioning on PDF
+- `AssignmentDialog` - Create document assignment
+- `ThreeTierAuth` - Authentication flow
+- `SessionProvider` - Client-side session management
+
+### State Management
+
+**No global state library (Zustand, Redux, etc.).**
+
+**Approach:**
+- React Server Components for initial data
+- Client Components with `useState` for local state
+- React Hook Form for form state
+- API client with `credentials: 'include'` for session cookies
+
+### API Client
+
+**Location:** `/frontend/src/lib/api.ts`
 
 ```typescript
-// Sensitive fields encrypted at rest in Bitrix24
-const ENCRYPTED_FIELDS = [
-  "ufCrm6Ssn",
-  "ufCrm6BankAccountNumber",
-  "ufCrm6BankRouting"
-];
+class ApiClient {
+  private baseUrl = 'https://hartzell.work/api';
+  private csrfToken: string | null = null;
 
-// All API requests use HTTPS
-// Session cookies marked as secure, httpOnly, sameSite
-```
+  async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...options.headers as Record<string, string>
+    };
 
-### Audit Logging
+    // Add CSRF token for state-changing requests
+    if (this.csrfToken && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method || '')) {
+      headers['X-CSRF-Token'] = this.csrfToken;
+    }
 
-```typescript
-interface AuditLog {
-  id: string;
-  timestamp: Date;
-  userId: number;
-  userName: string;
-  action: string; // "created", "updated", "deleted", "viewed"
-  entity: string; // "employee", "document", "review"
-  entityId: number;
-  changes?: Record<string, { old: any, new: any }>;
-  ipAddress: string;
-  userAgent: string;
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      ...options,
+      headers,
+      credentials: 'include' // Send session cookie
+    });
+
+    const data = await response.json();
+
+    // Update CSRF token if provided
+    if (data.csrfToken) {
+      this.setCsrfToken(data.csrfToken);
+    }
+
+    if (!response.ok) {
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
+
+    return data;
+  }
+
+  // Authentication methods
+  async login(badgeNumber: string, dateOfBirth: string) {
+    return this.request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ badgeNumber, dateOfBirth })
+    });
+  }
+
+  async verifySSN(ssnLast4: string, captchaToken: string) {
+    return this.request('/auth/verify-ssn', {
+      method: 'POST',
+      body: JSON.stringify({ ssnLast4, captchaToken })
+    });
+  }
+
+  // Employee methods
+  async getProfile() {
+    return this.request('/employee/profile');
+  }
+
+  async updateProfile(field: string, value: any) {
+    return this.request('/employee/profile', {
+      method: 'PUT',
+      body: JSON.stringify({ field, value })
+    });
+  }
+
+  // Admin methods
+  async getEmployees() {
+    return this.request('/admin/employees');
+  }
+
+  async updateEmployee(bitrixId: number, updates: Record<string, any>) {
+    return this.request(`/admin/employee/${bitrixId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates)
+    });
+  }
+
+  // ... more methods
 }
 
-// Every data modification logged
-async function logAuditEvent(event: Omit<AuditLog, "id" | "timestamp">) {
-  // Store in separate audit log table/service
-}
+export const api = new ApiClient();
 ```
 
 ---
 
-## User Interface Design
+## Deployment
 
-### Design System
+### Backend Deployment
 
-**Colors:**
-```css
-:root {
-  --primary: #3b82f6; /* Blue */
-  --success: #10b981; /* Green */
-  --warning: #f59e0b; /* Amber */
-  --danger: #ef4444;  /* Red */
-  --slate: #64748b;   /* Neutral */
-}
+**Command:**
+```bash
+cd /mnt/c/Users/Agent/Desktop/HR\ Center/cloudflare-app
+wrangler deploy
 ```
 
-**Typography:**
-- Font Family: Inter (system fallback: -apple-system, BlinkMacSystemFont, "Segoe UI")
-- Headings: font-weight 700
-- Body: font-weight 400
-- Labels: font-weight 500
+**Process:**
+1. Compiles TypeScript (`workers/index.ts`) to JavaScript
+2. Bundles dependencies
+3. Uploads to Cloudflare Workers
+4. Updates route configuration
+5. Returns deployment URL and version ID
 
-**Components:**
-- Use shadcn/ui components
-- Consistent spacing (4px grid)
-- Rounded corners (8px default)
-- Shadows for elevation
-- Focus states for accessibility
+**Post-Deployment:**
+- Verify deployment: `wrangler deployments list`
+- Monitor logs: `wrangler tail` or Cloudflare Dashboard → Workers → Logs
+- Check routes: `curl -I https://hartzell.work/api/auth/session`
 
-### Page Layouts
+### Frontend Deployment
 
-#### Dashboard Layout
-```
-┌─────────────────────────────────────────────┐
-│  Header (Logo, Nav, User Menu)             │
-├───────────┬─────────────────────────────────┤
-│           │                                 │
-│  Sidebar  │  Main Content Area              │
-│           │                                 │
-│  - Home   │  [Page-specific content]        │
-│  - Team   │                                 │
-│  - Docs   │                                 │
-│  - Admin  │                                 │
-│           │                                 │
-└───────────┴─────────────────────────────────┘
+**Build Command:**
+```bash
+cd /mnt/c/Users/Agent/Desktop/HR\ Center/frontend
+export NODE_OPTIONS="--max-old-space-size=4096"
+npm run build  # Generates static export to ./out
 ```
 
-#### Form Layout
+**Deploy Command:**
+```bash
+npx wrangler pages deploy out --project-name=hartzell-hr-frontend --commit-dirty=true
 ```
-┌─────────────────────────────────────────────┐
-│  Form Title                                 │
-│  Progress Indicator (multi-step forms)      │
-├─────────────────────────────────────────────┤
-│                                             │
-│  Section 1: Personal Information            │
-│  ┌─────────────┐  ┌─────────────┐          │
-│  │ First Name  │  │ Last Name   │          │
-│  └─────────────┘  └─────────────┘          │
-│                                             │
-│  Section 2: Contact Information             │
-│  ...                                        │
-│                                             │
-├─────────────────────────────────────────────┤
-│  [Cancel]              [Save Draft] [Next]  │
-└─────────────────────────────────────────────┘
+
+**Process:**
+1. Builds Next.js app in static export mode
+2. Generates HTML/CSS/JS to `out/` directory
+3. Uploads `out/` to Cloudflare Pages
+4. Publishes to production
+5. Updates `app.hartzell.work` custom domain
+
+**Post-Deployment:**
+- Verify deployment: `npx wrangler pages deployment list --project-name=hartzell-hr-frontend`
+- Check custom domain: `curl -I https://app.hartzell.work`
+- Test login flow: Visit https://app.hartzell.work/login
+
+### Environment Variables
+
+**Backend (Set via Cloudflare Dashboard or `wrangler secret put`):**
+```bash
+wrangler secret put BITRIX24_WEBHOOK_URL
+wrangler secret put SESSION_SECRET
+wrangler secret put HCAPTCHA_SECRET
 ```
+
+**Frontend (Set in Cloudflare Pages Dashboard):**
+1. Go to: Pages → hartzell-hr-frontend → Settings → Environment variables
+2. Add for both Production and Preview:
+   - `NEXT_PUBLIC_API_URL` = `https://hartzell.work/api`
+   - `NEXT_PUBLIC_HCAPTCHA_SITE_KEY` = (hCaptcha site key)
+
+### Database Migrations
+
+**Initial setup (already completed):**
+```bash
+cd /mnt/c/Users/Agent/Desktop/HR\ Center/cloudflare-app
+wrangler d1 create hartzell_hr_prod
+wrangler d1 execute hartzell_hr_prod --file=workers/schema.sql
+```
+
+**Adding new tables/columns:**
+1. Update `workers/schema.sql`
+2. Run migration:
+   ```bash
+   wrangler d1 execute hartzell_hr_prod --command="ALTER TABLE ..."
+   ```
+
+### Monitoring
+
+**Worker Logs:**
+```bash
+wrangler tail  # Live tail
+wrangler tail --env production --format pretty
+```
+
+**Cloudflare Dashboard:**
+- Workers: https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9/workers
+- Pages: https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9/pages
+- D1: https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9/d1
+- KV: https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9/kv
+- R2: https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9/r2
+
+**Performance Metrics:**
+- Worker analytics: Cloudflare Dashboard → Workers → Analytics
+- Pages analytics: Cloudflare Dashboard → Pages → Analytics
+- Core Web Vitals: Pages → Analytics → Web Vitals
 
 ---
 
-## Development Roadmap
+**End of Specification**
 
-### Phase 1: Foundation (Weeks 1-3)
-
-**Week 1: Project Setup**
-- Initialize Next.js project with TypeScript
-- Configure Tailwind CSS + shadcn/ui
-- Set up Bitrix24 API client
-- Implement authentication (NextAuth.js)
-- Create base layout and navigation
-
-**Week 2: Core Infrastructure**
-- Build employee data model and types
-- Implement API route structure
-- Create reusable form components
-- Set up validation schemas (Zod)
-- Implement error handling
-
-**Week 3: Dashboard Foundation**
-- Create role-based dashboard layouts
-- Implement employee list view
-- Build employee profile page
-- Create document viewer
-
-### Phase 2: Recruitment & Onboarding (Weeks 4-7)
-
-**Week 4: Employment Application**
-- Build public application form
-- Implement multi-step form flow
-- Add file upload functionality
-- Create application submission workflow
-
-**Week 5: Onboarding Checklist**
-- Build checklist component
-- Implement progress tracking
-- Create onboarding dashboard
-- Add automated email notifications
-
-**Week 6: Document Management**
-- Build document upload interface
-- Implement document viewer
-- Create document signing workflow
-- Add document template system
-
-**Week 7: Integration & Testing**
-- End-to-end testing of application → onboarding flow
-- Bug fixes and refinements
-- Performance optimization
-
-### Phase 3: Employee Management (Weeks 8-10)
-
-**Week 8: Employee Portal**
-- Build employee self-service dashboard
-- Implement profile edit functionality
-- Create document repository
-- Add emergency contact management
-
-**Week 9: Manager Tools**
-- Build team dashboard for managers
-- Implement team member directory
-- Create approval workflows
-- Add manager notifications
-
-**Week 10: HR Admin Interface**
-- Build comprehensive admin dashboard
-- Implement bulk operations
-- Create data export functionality
-- Add advanced filtering and search
-
-### Phase 4: Performance & Discipline (Weeks 11-13)
-
-**Week 11: Performance Reviews**
-- Build review creation interface
-- Implement rating system
-- Create review workflow
-- Add PDF generation
-
-**Week 12: Disciplinary Actions**
-- Build disciplinary action form
-- Implement progressive discipline tracking
-- Create action history view
-- Add letter generation
-
-**Week 13: Reporting & Analytics**
-- Build analytics dashboard
-- Implement custom reports
-- Create compliance reports
-- Add data visualization
-
-### Phase 5: Offboarding & Polish (Weeks 14-16)
-
-**Week 14: Termination Process**
-- Build termination workflow
-- Implement property return checklist
-- Create termination letter generator
-- Add exit interview scheduling
-
-**Week 15: Testing & QA**
-- Comprehensive testing
-- Security audit
-- Performance testing
-- Accessibility audit
-
-**Week 16: Deployment & Launch**
-- Production deployment
-- User training
-- Documentation
-- Go-live support
-
----
-
-## Success Criteria
-
-### MVP Launch Criteria (End of Phase 2)
-- ✅ Employment applications can be submitted digitally
-- ✅ Onboarding checklist tracks all required items
-- ✅ Documents can be uploaded and stored securely
-- ✅ New hires can be moved through onboarding pipeline
-- ✅ All data syncs with Bitrix24 in real-time
-- ✅ Role-based access control implemented
-- ✅ Audit logging functional
-- ✅ Mobile responsive
-
-### Full System Launch Criteria (End of Phase 5)
-- ✅ All 7 modules fully functional
-- ✅ 100% feature parity with HTML forms
-- ✅ Performance reviews can be conducted digitally
-- ✅ Termination process fully automated
-- ✅ Comprehensive reporting available
-- ✅ Security audit passed
-- ✅ WCAG 2.1 AA compliance
-- ✅ User training completed
-- ✅ Documentation complete
-
----
-
-*This specification is a living document and will be updated as the project evolves.*
+**Version:** 1.0 (As-Deployed)
+**Last Updated:** October 12, 2025
+**Production Status:** ✅ Live and operational

@@ -160,8 +160,8 @@ npx wrangler pages deploy out --project-name=hartzell-hr-frontend
 ## 📊 Current Live Deployment
 
 - **Custom Domain**: https://app.hartzell.work ✅
-- **Pages URL**: https://f3775ae6.hartzell-hr-frontend.pages.dev ✅
-- **Deployed**: October 10, 2025
+- **Pages URL**: https://ba780ac1.hartzell-hr-frontend.pages.dev ✅
+- **Deployed**: October 11, 2025
 - **Status**: Working correctly
 
 All features confirmed working:

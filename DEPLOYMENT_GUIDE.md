@@ -1,323 +1,352 @@
 # 🚀 Hartzell HR Center - Deployment Guide
 
-**Last Updated:** October 3, 2025
-**Status:** ✅ FULLY DEPLOYED AND OPERATIONAL
-**Repository:** https://github.com/botpros-admin/HAR-HR-center
+**Last Updated:** October 12, 2025
+**Status:** ✅ DEPLOYED AND OPERATIONAL
 
 ---
 
 ## 📋 Table of Contents
 
-1. [Deployment Status](#deployment-status)
-2. [Live URLs](#live-urls)
-3. [Infrastructure Details](#infrastructure-details)
-4. [Pending Actions](#pending-actions)
+1. [Current Deployment Status](#current-deployment-status)
+2. [Production URLs](#production-urls)
+3. [Infrastructure Overview](#infrastructure-overview)
+4. [Deployment Procedures](#deployment-procedures)
 5. [Testing Your Deployment](#testing-your-deployment)
-6. [Deployment Statistics](#deployment-statistics)
-7. [Common Operations](#common-operations)
+6. [Common Operations](#common-operations)
+7. [Troubleshooting](#troubleshooting)
 
 ---
 
-## ✅ Deployment Status
+## ✅ Current Deployment Status
 
 ### What's Deployed
 
 **Backend (Cloudflare Workers)** ✅
-- Service: `hartzell-hr-center`
+- Worker: `hartzell-hr-center-production`
 - Routes: `hartzell.work/api/*`
-- Version: 63a578af-35ce-420c-acb5-d4726c87931d
-- Size: 216.17 KiB (gzip: 41.87 KiB)
-- Startup Time: 20ms
+- Current Version: `e702eb84-6e35-498f-899b-4961d876fda9`
+- Deployed: October 12, 2025
 
 **Frontend (Cloudflare Pages)** ✅
 - Project: `hartzell-hr-frontend`
-- Build: Next.js 14 static export
-- Files: 45 optimized files
-- Status: Live and accessible
+- Custom Domain: `app.hartzell.work`
+- Latest Deployment: `ba780ac1.hartzell-hr-frontend.pages.dev`
+- Deployed: October 11, 2025
 
 **Database (D1)** ✅
-- Database: `hartzell_hr`
-- ID: `a9a002e6-d7fb-4067-a2b2-212bf295ef28`
-- Region: ENAM
-- Size: 0.17 MB
-- Tables: 7 (sessions, audit_logs, rate_limits, signature_requests, pending_tasks, employee_cache, system_config)
+- Database: `hartzell_hr_prod`
+- ID: `9926c3a9-c6e1-428f-8c36-fdb001c326fd`
+- Tables: 7
+- Status: Active
+
+**Cache (KV)** ✅
+- Namespace: Production Cache
+- ID: `54f7714316b14265a8224c255d9a7f80`
+- Usage: Employee data caching (24hr TTL)
+
+**Storage (R2)** ✅
+- Assets Bucket: `hartzell-assets-prod`
+- Templates Bucket: `hartzell-hr-templates-prod`
 
 **Integrations** ✅
-- Bitrix24: Webhook configured
-- OpenSign: Sandbox API token set
-- Turnstile: Test keys active (⚠️ needs production keys)
+- Bitrix24: REST API via webhook (entity type 1054)
+- hCaptcha: Tier 3 authentication
 
 ---
 
-## 🌐 Live URLs
+## 🌐 Production URLs
 
-### Production URLs
+### Employee Portal (Frontend)
+- **Custom Domain:** https://app.hartzell.work ✅
+- **Pages URL:** https://ba780ac1.hartzell-hr-frontend.pages.dev
 
-**Frontend (Employee Portal):**
-- https://f7f72fd4.hartzell-hr-frontend.pages.dev (current deployment)
-
-**Backend (API):**
-- https://hartzell-hr-center.agent-b68.workers.dev/api (Workers URL)
-- hartzell.work/api/* (custom domain route)
+### Backend API
+- **Production:** https://hartzell.work/api/* ✅
+- **Worker URL:** hartzell-hr-center-production.agent-b68.workers.dev
 
 ### Management Dashboards
-
 - **Cloudflare Account:** https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9
-- **Workers:** https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9/workers/overview
-- **Pages:** https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9/pages/view/hartzell-hr-frontend
+- **Workers:** https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9/workers
+- **Pages:** https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9/pages
 - **D1 Database:** https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9/d1
-- **Turnstile:** https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9/turnstile
+- **KV Storage:** https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9/kv
+- **R2 Storage:** https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9/r2
 
 ---
 
-## 🏗️ Infrastructure Details
+## 🏗️ Infrastructure Overview
 
-### Backend Configuration
+### Cloudflare Account
+**Account ID:** b68132a02e46f8cc02bcf9c5745a72b9
+
+### Backend Configuration (Worker)
+
+**Secrets (Set via `wrangler secret put`):**
+- `BITRIX24_WEBHOOK_URL` - Bitrix24 REST API webhook
+- `SESSION_SECRET` - 32-byte hex string for session encryption
+- `HCAPTCHA_SECRET` - hCaptcha secret key
 
 **Environment Variables (wrangler.toml):**
 ```toml
+[vars]
 BITRIX24_ENTITY_TYPE_ID = "1054"
-OPENSIGN_ENV = "sandbox"
-SESSION_MAX_AGE = "28800"  # 8 hours
+SESSION_MAX_AGE = "28800"          # 8 hours
 RATE_LIMIT_MAX_ATTEMPTS = "5"
-RATE_LIMIT_WINDOW = "900"  # 15 minutes
+RATE_LIMIT_WINDOW = "900"          # 15 minutes
 ```
 
-**Secrets Configured:**
-- `BITRIX24_WEBHOOK_URL` - https://hartzell.app/rest/1/jp689g5yfvre9pvd
-- `OPENSIGN_API_TOKEN` - test.keNN7hbRY40lf9z7GLzd9 (sandbox)
-- `SESSION_SECRET` - Auto-generated
-- `OPENSIGN_WEBHOOK_SECRET` - Auto-generated
-- `TURNSTILE_SECRET_KEY` - Test key (1x0000000000000000000000000000000AA)
-
-**Database Tables:**
+**Database Tables (D1):**
 1. `sessions` - User session management
-2. `audit_logs` - Security event logging
-3. `rate_limits` - Login attempt tracking
-4. `signature_requests` - OpenSign integration
-5. `pending_tasks` - Employee action items
-6. `employee_cache` - Bitrix24 data cache
-7. `system_config` - System configuration
+2. `login_attempts` - Rate limiting
+3. `admin_users` - Admin authentication
+4. `employee_cache` - Bitrix24 data cache
+5. `signature_requests` - Placeholder for future
+6. `templates` - PDF templates
+7. `assignments` - Document assignments
 
-**KV Namespace:**
-- Binding: `CACHE`
-- ID: `ae6971a1e8f746d4a39687a325f5dd2b`
-- Type: Global
+### Frontend Configuration (Pages)
 
-### Frontend Configuration
+**Environment Variables:**
+- `NEXT_PUBLIC_API_URL` = `https://hartzell.work/api`
+- `NEXT_PUBLIC_HCAPTCHA_SITE_KEY` = (hCaptcha site key)
 
-**Environment Variables (.env.local):**
-```env
-NEXT_PUBLIC_API_URL=https://hartzell-hr-center.agent-b68.workers.dev/api
-NEXT_PUBLIC_TURNSTILE_SITE_KEY=1x00000000000000000000AA
-NEXT_PUBLIC_OPENSIGN_ENV=sandbox
-```
-
-**Build Configuration:**
-- Output: Static export
-- Build: Next.js 14
-- Styling: Tailwind CSS
-- State: TanStack Query
-- Forms: React Hook Form
+**Build Settings:**
+- Framework: Next.js 14 (Static Export)
+- Build Command: `npm run build`
+- Output Directory: `out/`
 
 ---
 
-## ⏳ Pending Actions
+## 🚀 Deployment Procedures
 
-### 1. Push to GitHub 🔴 REQUIRED
+### Backend Deployment (Worker)
 
-**Status:** Code committed locally, needs push to remote
+**Prerequisites:**
+- Wrangler CLI installed (`npm install -g wrangler`)
+- Authenticated to Cloudflare (`wrangler login`)
+- Located in `/cloudflare-app` directory
 
-**Repository:** https://github.com/botpros-admin/HAR-HR-center.git
-
-**Quick Instructions:**
-
+**Deploy Command:**
 ```bash
-cd "/mnt/c/Users/Agent/Desktop/HR Center"
-
-# Option 1: Personal Access Token (Recommended)
-# Get token from: https://github.com/settings/tokens
-git remote set-url origin https://YOUR_TOKEN@github.com/botpros-admin/HAR-HR-center.git
-git push -u origin main
-
-# Option 2: GitHub CLI
-gh auth login
-git push -u origin main
-
-# Option 3: SSH
-git remote set-url origin git@github.com:botpros-admin/HAR-HR-center.git
-git push -u origin main
+cd /mnt/c/Users/Agent/Desktop/HR\ Center/cloudflare-app
+wrangler deploy
 ```
 
-### 2. Configure Custom Domain 🟡 OPTIONAL
+**What Happens:**
+1. TypeScript compiled to JavaScript
+2. Dependencies bundled
+3. Uploaded to Cloudflare Workers
+4. Routes updated: `hartzell.work/api/*`
+5. New version ID returned
 
-**Current:** Frontend at `f7f72fd4.hartzell-hr-frontend.pages.dev`
-**Goal:** Frontend at `hartzell.work` or `app.hartzell.work`
+**Verify Deployment:**
+```bash
+# List recent deployments
+wrangler deployments list
 
-**Instructions:**
+# Test API endpoint
+curl -I https://hartzell.work/api/auth/session
+```
 
-1. Go to: https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9/pages/view/hartzell-hr-frontend/domains
-2. Click "Set up a custom domain"
-3. Enter: `hartzell.work` or `app.hartzell.work`
-4. Wait for DNS propagation (1-2 minutes)
+**Expected Output:**
+```
+HTTP/2 401 (or 200 if you have a valid session)
+```
 
-**Note:** May need to adjust Worker routes to avoid conflicts with backend
+### Frontend Deployment (Pages)
 
-### 3. Production Turnstile Keys 🟡 RECOMMENDED
+**Prerequisites:**
+- Located in `/frontend` directory
+- Node.js 20+ installed
+- `npm install` completed
 
-**Current:** Using test keys (allows all requests)
-**Recommended:** Configure production keys for real CAPTCHA protection
+**Build Command:**
+```bash
+cd /mnt/c/Users/Agent/Desktop/HR\ Center/frontend
+export NODE_OPTIONS="--max-old-space-size=4096"
+npm run build
+```
 
-**Instructions:**
+**What Happens:**
+1. Next.js builds static export
+2. Output written to `out/` directory
+3. All pages pre-rendered
+4. Static assets optimized
 
-1. Go to: https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9/turnstile
-2. Click "Create Widget"
-3. Configure:
-   - Site name: Hartzell HR Center
-   - Domain: hartzell.work
-   - Widget Mode: Managed
-4. Update frontend with production site key:
-   ```bash
-   cd frontend
-   # Edit .env.local with new NEXT_PUBLIC_TURNSTILE_SITE_KEY
-   npm run build
-   wrangler pages deploy out --project-name=hartzell-hr-frontend
-   ```
-5. Update backend secret:
-   ```bash
-   cd cloudflare-app
-   wrangler secret put TURNSTILE_SECRET_KEY
-   # Paste production secret key
-   ```
+**Deploy Command:**
+```bash
+npx wrangler pages deploy out --project-name=hartzell-hr-frontend --commit-dirty=true
+```
 
-### 4. Switch to Production OpenSign 🟢 FUTURE
+**What Happens:**
+1. `out/` directory uploaded to Cloudflare Pages
+2. New deployment created
+3. Custom domain `app.hartzell.work` automatically updated
 
-**Current:** Sandbox environment
-**When Ready:** Switch to production OpenSign
+**Verify Deployment:**
+```bash
+# List recent deployments
+npx wrangler pages deployment list --project-name=hartzell-hr-frontend
 
-**Instructions:**
+# Test frontend
+curl -I https://app.hartzell.work/
+```
 
-1. Get production API token from OpenSign dashboard
-2. Update backend secret:
-   ```bash
-   cd cloudflare-app
-   wrangler secret put OPENSIGN_API_TOKEN
-   # Enter production token
-   ```
-3. Update frontend environment and rebuild
+**Expected Output:**
+```
+HTTP/2 200
+```
+
+### Database Migrations (D1)
+
+**Initial Setup (Already Completed):**
+```bash
+# Create database
+wrangler d1 create hartzell_hr_prod
+
+# Initialize schema
+wrangler d1 execute hartzell_hr_prod --file=workers/schema.sql
+```
+
+**Adding New Tables/Columns:**
+```bash
+# Option 1: Direct SQL command
+wrangler d1 execute hartzell_hr_prod --command="ALTER TABLE tablename ADD COLUMN columnname TEXT"
+
+# Option 2: SQL file
+wrangler d1 execute hartzell_hr_prod --file=path/to/migration.sql
+```
+
+### Secrets Management
+
+**List Current Secrets:**
+```bash
+cd cloudflare-app
+wrangler secret list
+```
+
+**Update a Secret:**
+```bash
+wrangler secret put SECRET_NAME
+# Paste secret value when prompted
+```
+
+**Generate and Set Session Secret:**
+```bash
+openssl rand -hex 32 | wrangler secret put SESSION_SECRET
+```
+
+**Update Bitrix24 Webhook:**
+```bash
+wrangler secret put BITRIX24_WEBHOOK_URL
+# Paste: https://hartzell.app/rest/1/jp689g5yfvre9pvd
+```
+
+**Update hCaptcha Secret:**
+```bash
+wrangler secret put HCAPTCHA_SECRET
+# Paste your hCaptcha secret key
+```
 
 ---
 
 ## 🧪 Testing Your Deployment
 
-### Test Frontend
+### 1. Test Frontend Availability
 
 ```bash
-# Visit in browser
-open https://f7f72fd4.hartzell-hr-frontend.pages.dev
+# Test landing page
+curl -I https://app.hartzell.work/
 
-# Or test with curl
-curl https://f7f72fd4.hartzell-hr-frontend.pages.dev/login/
+# Test login page
+curl -I https://app.hartzell.work/login/
+
+# Test admin page (should redirect if not authenticated)
+curl -I https://app.hartzell.work/admin/
 ```
 
-### Test Backend API
+**Expected:** All return `HTTP/2 200`
+
+### 2. Test Backend API
 
 ```bash
-# Health check
-curl https://hartzell-hr-center.agent-b68.workers.dev/api/health
+# Test session endpoint (should return 401 without auth)
+curl -I https://hartzell.work/api/auth/session
 
-# Expected response:
-# {"status":"healthy","timestamp":"...","version":"1.0.0"}
-
-# Test login (with real employee data)
-curl -X POST https://hartzell-hr-center.agent-b68.workers.dev/api/auth/login \
+# Test login endpoint
+curl -X POST https://hartzell.work/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "employeeId": "EMP1001",
-    "dateOfBirth": "1980-07-05"
+    "badgeNumber": "EMP1001",
+    "dateOfBirth": "1990-01-15"
   }'
 ```
 
-### Test Database
+**Expected:**
+- Session endpoint: `HTTP/2 401` or `HTTP/2 200` (if authenticated)
+- Login endpoint: JSON response with success/error
+
+### 3. Test Database Connectivity
 
 ```bash
 cd cloudflare-app
 
 # List all tables
-wrangler d1 execute hartzell_hr --command="SELECT name FROM sqlite_master WHERE type='table'"
+wrangler d1 execute hartzell_hr_prod --command="SELECT name FROM sqlite_master WHERE type='table'"
 
 # Count sessions
-wrangler d1 execute hartzell_hr --command="SELECT COUNT(*) FROM sessions"
+wrangler d1 execute hartzell_hr_prod --command="SELECT COUNT(*) FROM sessions"
 
-# View recent audit logs
-wrangler d1 execute hartzell_hr --command="SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 10"
-
-# Check active sessions
-wrangler d1 execute hartzell_hr --command="SELECT badge_number, expires_at FROM sessions WHERE expires_at > datetime('now')"
+# Check employee cache
+wrangler d1 execute hartzell_hr_prod --command="SELECT COUNT(*) FROM employee_cache"
 ```
 
-### End-to-End Testing
+### 4. Test Bitrix24 Integration
+
+```bash
+# Test direct Bitrix24 API call (replace with actual webhook URL)
+curl "https://hartzell.app/rest/1/YOUR_WEBHOOK/crm.item.list?entityTypeId=1054" | jq
+```
+
+**Expected:** JSON response with employee list
+
+### 5. End-to-End Testing
 
 1. **Login Flow:**
-   - Visit frontend URL
-   - Enter Employee ID: EMP1001
-   - Enter Date of Birth: 07/05/1980
-   - Should succeed or request SSN
-   - Test 3 failed attempts → CAPTCHA appears
+   - Visit https://app.hartzell.work/login
+   - Enter Badge Number: EMP1001
+   - Enter Date of Birth: 01/15/1990
+   - Should proceed to ID verification
+   - Enter last 4 of SSN + solve CAPTCHA
+   - Should redirect to dashboard
 
-2. **Dashboard:**
-   - Verify pending signatures display
-   - Check action items load
-   - Verify stats are accurate
+2. **Employee Dashboard:**
+   - View profile information
+   - Check for pending tasks/documents
+   - Verify data loads correctly
 
-3. **Documents Page:**
-   - Documents are categorized
-   - Signature-required docs show badge
-   - Download/view buttons work
+3. **Admin Login:**
+   - Visit https://app.hartzell.work/admin
+   - Enter admin credentials (set in D1)
+   - View employee directory
+   - Edit employee details
+   - Upload template
 
-4. **Signatures Page:**
-   - Pending signatures display
-   - Click "Sign Document" opens OpenSign
-   - Completed signatures show in history
-
-5. **Profile Page:**
-   - All employee data displays correctly
-   - Personal and employment info visible
-
----
-
-## 📊 Deployment Statistics
-
-| Metric | Value |
-|--------|-------|
-| **Total Files** | 63 |
-| **Backend Code** | 943 lines (TypeScript) |
-| **Frontend Code** | 1,749 lines (TypeScript/TSX) |
-| **Database Tables** | 7 |
-| **API Endpoints** | 15+ |
-| **Pages/Routes** | 9 |
-| **Build Time** | ~2 minutes |
-| **Monthly Cost** | **$0** (Cloudflare free tier) |
-
-### Expected Usage (39 Employees)
-
-| Resource | Daily Usage | Free Tier Limit | Status |
-|----------|-------------|-----------------|--------|
-| Workers Requests | ~500 | 100,000 | ✅ Well within |
-| D1 Reads | ~2,000 | 5,000,000 | ✅ Well within |
-| D1 Writes | ~100 | 100,000 | ✅ Well within |
-| KV Reads | ~1,000 | 100,000 | ✅ Well within |
-| KV Writes | ~50 | 1,000 | ✅ Well within |
-| D1 Storage | ~10 MB | 5 GB | ✅ Well within |
+4. **Rate Limiting:**
+   - Attempt login with wrong password 5+ times
+   - Should see "Too many attempts" error
+   - CAPTCHA should be required
 
 ---
 
 ## 🔧 Common Operations
 
-### View Logs
+### View Worker Logs
 
 ```bash
-# Real-time backend logs
+cd cloudflare-app
+
+# Live tail (all requests)
 wrangler tail
 
 # Filter by status
@@ -325,259 +354,337 @@ wrangler tail --status error
 
 # Filter by method
 wrangler tail --method POST
+
+# Pretty format
+wrangler tail --format pretty
+
+# Specific duration (e.g., 60 seconds)
+timeout 60 wrangler tail
 ```
 
-### Database Operations
+### Database Queries
 
 ```bash
-# Count all sessions
-wrangler d1 execute hartzell_hr --command="SELECT COUNT(*) FROM sessions WHERE expires_at > datetime('now')"
+# Count active sessions
+wrangler d1 execute hartzell_hr_prod --command="
+SELECT COUNT(*) as active_sessions
+FROM sessions
+WHERE expires_at > CAST(strftime('%s', 'now') * 1000 AS INTEGER)
+"
 
 # Recent login attempts
-wrangler d1 execute hartzell_hr --command="
-SELECT action, status, badge_number, timestamp
-FROM audit_logs
-WHERE action IN ('login_attempt', 'login_success', 'login_failed')
-ORDER BY timestamp DESC
-LIMIT 20"
+wrangler d1 execute hartzell_hr_prod --command="
+SELECT ip_address, attempt_time, success
+FROM login_attempts
+ORDER BY attempt_time DESC
+LIMIT 20
+"
+
+# Employee cache stats
+wrangler d1 execute hartzell_hr_prod --command="
+SELECT
+  COUNT(*) as total_employees,
+  COUNT(DISTINCT department) as departments,
+  MAX(last_sync) as last_sync
+FROM employee_cache
+"
 
 # Clean up expired sessions
-wrangler d1 execute hartzell_hr --command="DELETE FROM sessions WHERE expires_at < datetime('now')"
-
-# Clear rate limits (for testing)
-wrangler d1 execute hartzell_hr --command="DELETE FROM rate_limits"
+wrangler d1 execute hartzell_hr_prod --command="
+DELETE FROM sessions
+WHERE expires_at < CAST(strftime('%s', 'now') * 1000 AS INTEGER)
+"
 ```
 
-### Deployment Commands
+### KV Cache Operations
 
 ```bash
-# Redeploy backend
-cd cloudflare-app
-wrangler deploy
+# List all keys
+wrangler kv key list --namespace-id=54f7714316b14265a8224c255d9a7f80
 
-# Rebuild and redeploy frontend
-cd frontend
-npm run build
-wrangler pages deploy out --project-name=hartzell-hr-frontend
+# Get specific employee from cache
+wrangler kv key get "employee:badge:EMP1001" --namespace-id=54f7714316b14265a8224c255d9a7f80
 
-# List frontend deployments
+# Delete cache entry
+wrangler kv key delete "employee:badge:EMP1001" --namespace-id=54f7714316b14265a8224c255d9a7f80
+
+# Bulk delete all keys (for testing)
+wrangler kv key list --namespace-id=54f7714316b14265a8224c255d9a7f80 | \
+  jq -r '.[].name' | \
+  xargs -I {} wrangler kv key delete "{}" --namespace-id=54f7714316b14265a8224c255d9a7f80
+```
+
+### R2 Storage Operations
+
+```bash
+# List objects in templates bucket
+wrangler r2 object list hartzell-hr-templates-prod
+
+# Download a template
+wrangler r2 object get hartzell-hr-templates-prod/templates/UUID.pdf --file=downloaded.pdf
+
+# Upload a template
+wrangler r2 object put hartzell-hr-templates-prod/templates/UUID.pdf --file=template.pdf
+
+# Delete a template
+wrangler r2 object delete hartzell-hr-templates-prod/templates/UUID.pdf
+```
+
+### Rollback Procedures
+
+**Rollback Backend (Worker):**
+```bash
+# List recent deployments
+wrangler deployments list
+
+# Deploy specific version
+wrangler versions deploy [VERSION_ID]@[PERCENTAGE]
+# Example: wrangler versions deploy 6f20064e@100
+```
+
+**Rollback Frontend (Pages):**
+```bash
+# List deployments
 wrangler pages deployment list --project-name=hartzell-hr-frontend
 
-# List backend deployments
-wrangler deployments list
-```
-
-### Update Secrets
-
-```bash
-cd cloudflare-app
-
-# List current secrets
-wrangler secret list
-
-# Update a secret
-wrangler secret put SECRET_NAME
-
-# Generate and set new session secret
-openssl rand -base64 32 | wrangler secret put SESSION_SECRET
-```
-
-### Cache Management
-
-```bash
-# List KV keys
-wrangler kv:key list --binding=CACHE
-
-# Get a specific key
-wrangler kv:key get "employee:badge:EMP1001" --binding=CACHE
-
-# Delete a key
-wrangler kv:key delete "employee:badge:EMP1001" --binding=CACHE
+# Redeploy specific commit
+git checkout [COMMIT_HASH]
+cd frontend
+npm run build
+npx wrangler pages deploy out --project-name=hartzell-hr-frontend
+git checkout main
 ```
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Frontend Can't Reach Backend
+### Issue: Frontend Can't Reach Backend
 
-**Symptoms:** "Failed to fetch" or network errors
+**Symptoms:**
+- "Failed to fetch" errors in browser console
+- Network timeout errors
+- CORS errors
 
 **Solutions:**
-1. Verify backend is deployed:
+
+1. **Verify backend is running:**
    ```bash
-   curl https://hartzell-hr-center.agent-b68.workers.dev/api/health
+   curl -I https://hartzell.work/api/auth/session
    ```
-2. Check CORS configuration in `workers/index.ts`
-3. Verify frontend API URL in `next.config.js`
-4. Rebuild and redeploy frontend if needed
+   Expected: `HTTP/2 401` or `HTTP/2 200`
 
-### "Too Many Attempts" / Rate Limited
+2. **Check frontend API URL:**
+   - Visit Pages project in Cloudflare Dashboard
+   - Settings → Environment variables
+   - Verify `NEXT_PUBLIC_API_URL` = `https://hartzell.work/api`
 
-**Solution:**
-```bash
-# Clear rate limits for specific employee
-wrangler d1 execute hartzell_hr --command="DELETE FROM rate_limits WHERE identifier='EMP1001'"
+3. **Rebuild frontend if needed:**
+   ```bash
+   cd frontend
+   npm run build
+   npx wrangler pages deploy out --project-name=hartzell-hr-frontend
+   ```
 
-# Clear all rate limits
-wrangler d1 execute hartzell_hr --command="DELETE FROM rate_limits"
-```
+### Issue: "Too Many Attempts" / Rate Limited
 
-### Session Expires Immediately
+**Symptoms:**
+- Can't login after 5 failed attempts
+- "Too many attempts" error message
 
 **Solutions:**
-1. Verify session secret is set:
+
+1. **Clear rate limits for specific IP:**
+   ```bash
+   wrangler d1 execute hartzell_hr_prod --command="
+   DELETE FROM login_attempts WHERE ip_address='123.456.789.0'
+   "
+   ```
+
+2. **Clear all rate limits (testing only):**
+   ```bash
+   wrangler d1 execute hartzell_hr_prod --command="DELETE FROM login_attempts"
+   ```
+
+### Issue: Session Expires Immediately
+
+**Symptoms:**
+- Logged out after every request
+- "Session expired" immediately after login
+
+**Solutions:**
+
+1. **Check session secret:**
    ```bash
    wrangler secret list | grep SESSION_SECRET
    ```
-2. Regenerate if needed:
+
+2. **Regenerate session secret:**
    ```bash
-   openssl rand -base64 32 | wrangler secret put SESSION_SECRET
+   openssl rand -hex 32 | wrangler secret put SESSION_SECRET
    wrangler deploy
    ```
 
-### Employee Not Found
+3. **Verify session expiry time:**
+   - Check `wrangler.toml` → `SESSION_MAX_AGE = "28800"` (8 hours)
+
+### Issue: Employee Not Found
+
+**Symptoms:**
+- "Invalid credentials" for valid employee
+- Badge number not recognized
 
 **Solutions:**
-1. Test Bitrix24 API directly:
+
+1. **Test Bitrix24 API directly:**
    ```bash
-   curl "https://hartzell.app/rest/1/jp689g5yfvre9pvd/crm.item.list?entityTypeId=1054&filter[ufCrm6BadgeNumber]=EMP1001"
+   curl "https://hartzell.app/rest/1/jp689g5yfvre9pvd/crm.item.list?entityTypeId=1054&filter\[ufCrm6BadgeNumber\]=EMP1001" | jq
    ```
-2. Verify webhook URL secret:
+
+2. **Check webhook URL secret:**
    ```bash
    wrangler secret list | grep BITRIX24
    ```
 
-### CAPTCHA Not Working
+3. **Refresh employee cache:**
+   - Login as admin at https://app.hartzell.work/admin
+   - Click "Refresh Employees" button
 
-**For Testing:** Use test keys (currently configured)
-- Site Key: `1x00000000000000000000AA`
-- Secret Key: `1x0000000000000000000000000000000AA`
+### Issue: CAPTCHA Not Working
 
-**For Production:** Create widget in Turnstile dashboard and update both frontend and backend
+**Symptoms:**
+- CAPTCHA doesn't load
+- "Invalid CAPTCHA" error
 
----
+**Solutions:**
 
-## 🚨 Emergency Procedures
+1. **Verify hCaptcha site key (frontend):**
+   - Pages Dashboard → hartzell-hr-frontend → Settings → Environment variables
+   - Check `NEXT_PUBLIC_HCAPTCHA_SITE_KEY`
 
-### Rollback Backend Deployment
+2. **Verify hCaptcha secret (backend):**
+   ```bash
+   wrangler secret list | grep HCAPTCHA
+   ```
 
-```bash
-# List recent deployments
-wrangler deployments list
+3. **Test hCaptcha directly:**
+   - Visit https://www.hcaptcha.com/
+   - Verify site/secret keys are valid
 
-# Rollback to specific version
-wrangler rollback [VERSION_ID]
-```
+### Issue: Database Queries Failing
 
-### Rollback Frontend Deployment
+**Symptoms:**
+- "Database error" in logs
+- Empty responses from API
 
-```bash
-# List deployments
-wrangler pages deployment list --project-name=hartzell-hr-frontend
+**Solutions:**
 
-# Redeploy previous version from git
-git checkout [PREVIOUS_COMMIT]
-cd frontend
-npm run build
-wrangler pages deploy out --project-name=hartzell-hr-frontend
-git checkout main
-```
+1. **Verify database exists:**
+   ```bash
+   wrangler d1 list | grep hartzell_hr_prod
+   ```
 
-### Reset Database (⚠️ Caution!)
+2. **Check table schema:**
+   ```bash
+   wrangler d1 execute hartzell_hr_prod --command="SELECT sql FROM sqlite_master WHERE type='table'"
+   ```
 
-```bash
-# Drop all tables
-wrangler d1 execute hartzell_hr --command="
-DROP TABLE IF EXISTS sessions;
-DROP TABLE IF EXISTS audit_logs;
-DROP TABLE IF EXISTS rate_limits;
-DROP TABLE IF EXISTS signature_requests;
-DROP TABLE IF EXISTS pending_tasks;
-DROP TABLE IF EXISTS employee_cache;
-DROP TABLE IF EXISTS system_config;"
+3. **Reset database (⚠️ DESTRUCTIVE):**
+   ```bash
+   # Backup first
+   wrangler d1 export hartzell_hr_prod --output=backup.sql
 
-# Recreate schema
-wrangler d1 execute hartzell_hr --file=./workers/schema.sql
-```
-
----
-
-## ✅ Success Criteria - ALL MET!
-
-- ✅ Backend deployed and operational
-- ✅ Frontend deployed and accessible
-- ✅ Database created with all tables
-- ✅ Authentication system working (3-tier: DOB + ID + SSN + CAPTCHA)
-- ✅ Rate limiting active
-- ✅ CAPTCHA integration ready
-- ✅ Audit logging enabled
-- ✅ Bitrix24 integration configured
-- ✅ OpenSign integration configured
-- ✅ Mobile responsive design
-- ✅ Complete documentation
-- ✅ $0/month hosting cost
-- ⏳ Code pushed to GitHub (pending authentication)
-- ⏳ Custom domain configured (optional)
+   # Reset
+   wrangler d1 execute hartzell_hr_prod --file=workers/schema.sql
+   ```
 
 ---
 
-## 🎯 Next Steps
+## 📊 Deployment Statistics
 
-1. **Push to GitHub** (Required for version control)
-   - See instructions above
-   - Takes: 2 minutes
+### Resource Usage (39 Employees)
 
-2. **Configure Custom Domain** (Recommended)
-   - See instructions above
-   - Takes: 5 minutes
+| Resource | Daily Usage | Monthly Limit (Free Tier) | Status |
+|----------|-------------|---------------------------|--------|
+| Worker Requests | ~500 | 100,000 | ✅ 0.5% used |
+| D1 Reads | ~2,000 | 5,000,000 | ✅ 0.04% used |
+| D1 Writes | ~100 | 100,000 | ✅ 0.1% used |
+| D1 Storage | ~10 MB | 5 GB | ✅ 0.2% used |
+| KV Reads | ~1,000 | 100,000 | ✅ 1% used |
+| KV Writes | ~50 | 1,000 | ✅ 5% used |
+| Pages Builds | 2-5 | 500 | ✅ <1% used |
 
-3. **Set Production Turnstile Keys** (Recommended for security)
-   - See instructions above
-   - Takes: 5 minutes
+**Monthly Cost:** $0 (within free tier)
 
-4. **Test End-to-End** (Required before going live)
-   - Test login with real employee data
-   - Verify all pages load
-   - Check audit logging
-   - Takes: 15 minutes
+### Code Statistics
 
-5. **Train HR Staff** (Before launch)
-   - Show how to use Cloudflare dashboard
-   - Explain monitoring and logs
-   - Takes: 30 minutes
+| Metric | Value |
+|--------|-------|
+| Backend (TypeScript) | ~1,200 lines |
+| Frontend (TypeScript/TSX) | ~2,500 lines |
+| Total Files | ~70 |
+| API Endpoints | 25+ |
+| Frontend Pages | 15+ |
+| Database Tables | 7 |
 
-6. **Launch to Employees** (When ready)
-   - Send email with portal URL
-   - Provide support contact
-   - Monitor for issues
+---
+
+## 🎯 Pre-Launch Checklist
+
+Before announcing to employees:
+
+- [x] Backend deployed to production
+- [x] Frontend deployed with custom domain
+- [x] Database initialized with schema
+- [x] All secrets configured
+- [x] Bitrix24 integration tested
+- [x] Authentication flow tested (3-tier)
+- [x] Rate limiting tested
+- [x] Admin dashboard functional
+- [x] Employee portal functional
+- [ ] Train HR staff on admin interface
+- [ ] Test with small group of employees
+- [ ] Prepare announcement email
+- [ ] Set up monitoring alerts (optional)
 
 ---
 
 ## 📞 Support Resources
 
-**For More Information, See:**
-- `README.md` - Project overview
-- `HANDOFF_GUIDE.md` - Complete operations manual
-- `SPECIFICATION.md` - Technical specifications
-- `CLOUDFLARE_ARCHITECTURE.md` - System architecture
+**Documentation:**
+- `README.md` - System overview
+- `SPECIFICATION.md` - Complete technical specification
+- `OPENSIGN_INTEGRATION.md` - E-signature guide (NOT IMPLEMENTED)
+- `cloudflare-app/README.md` - Backend architecture
+- `frontend/README.md` - Frontend architecture
 
 **External Resources:**
 - [Cloudflare Workers Docs](https://developers.cloudflare.com/workers)
 - [Cloudflare D1 Docs](https://developers.cloudflare.com/d1)
 - [Cloudflare Pages Docs](https://developers.cloudflare.com/pages)
-- [Wrangler CLI Docs](https://developers.cloudflare.com/workers/wrangler)
+- [Wrangler CLI Reference](https://developers.cloudflare.com/workers/wrangler/commands/)
+- [Hono Framework Docs](https://hono.dev/)
+- [Next.js Docs](https://nextjs.org/docs)
+
+**Monitoring:**
+- Worker Logs: `wrangler tail`
+- Cloudflare Dashboard: https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9
 
 ---
 
 ## 🎉 Deployment Complete!
 
-**The Hartzell HR Center is FULLY DEPLOYED and OPERATIONAL!**
+**The Hartzell HR Center is DEPLOYED and OPERATIONAL!**
 
-**Total Development Time:** Spec to production in one session
-**Total Cost:** $0/month
-**Status:** 🚀 **PRODUCTION READY**
+- ✅ Backend API: https://hartzell.work/api/*
+- ✅ Employee Portal: https://app.hartzell.work
+- ✅ Admin Dashboard: https://app.hartzell.work/admin
+- ✅ Monthly Cost: $0 (Cloudflare free tier)
+- ✅ 39 employees ready to use the system
+
+**Status:** 🚀 **PRODUCTION**
 
 ---
 
-*Last Updated: October 3, 2025*
+*Last Updated: October 12, 2025*
+*Deployment Version: 1.0.0*

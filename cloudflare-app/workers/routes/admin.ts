@@ -38,89 +38,247 @@ adminRoutes.use('/*', async (c, next) => {
 });
 
 // Field mapping: Frontend camelCase -> Bitrix ufCrm6* fields
+// COMPREHENSIVE mapping for all 100+ employee fields
 const FIELD_MAP: Record<string, string> = {
-  // Personal Information
+  // Personal Information (18 fields)
   firstName: 'ufCrm6Name',
   middleName: 'ufCrm6SecondName',
   lastName: 'ufCrm6LastName',
   preferredName: 'ufCrm6PreferredName',
   dateOfBirth: 'ufCrm6PersonalBirthday',
+  gender: 'ufCrm6PersonalGender',
+  maritalStatus: 'ufCrm6MaritalStatus',
+  citizenship: 'ufCrm6Citizenship',
+  personalEmail: 'ufCrm6Email', // Frontend uses 'personalEmail' not 'email'
+  personalPhone: 'ufCrm6PersonalMobile', // Frontend uses 'personalPhone' not 'phone'
+  workPhone: 'ufCrm6WorkPhone',
+  officePhone: 'ufCrm6PersonalPhone',
+  officeExtension: 'ufCrm6_1748054470',
+  address: 'ufCrm6Address',
+  profilePhoto: 'ufCrm6ProfilePhoto',
+
+  // Legacy aliases for backward compatibility
   email: 'ufCrm6Email',
   phone: 'ufCrm6PersonalMobile',
-  address: 'ufCrm6Address',
 
-  // Employment Details
+  // Emergency Contact (3 fields)
+  emergencyContactName: 'ufCrm6EmergencyContactName',
+  emergencyContactPhone: 'ufCrm6EmergencyContactPhone',
+  emergencyContactRelationship: 'ufCrm6Relationship',
+
+  // Employment Details (11 fields)
+  badgeNumber: 'ufCrm6BadgeNumber',
   position: 'ufCrm6WorkPosition',
   subsidiary: 'ufCrm6Subsidiary',
   employmentStatus: 'ufCrm6EmploymentStatus',
   hireDate: 'ufCrm6EmploymentStartDate',
   employmentType: 'ufCrm6EmploymentType',
   shift: 'ufCrm6Shift',
+  payRate: 'ufCrm6PayRate',
+  benefitsEligible: 'ufCrm6BenefitsEligible',
+  salesTerritory: 'ufCrm6Sales',
+  projectCategory: 'ufCrm_6_SALES_UF_USER_LEGAL_1740423289664',
+  wcCode: 'ufCrm6WcCode',
 
-  // Compensation & Benefits
+  // Compensation & Benefits (5 fields)
+  ssn: 'ufCrm6Ssn',
   ptoDays: 'ufCrm6PtoDays',
   healthInsurance: 'ufCrm6HealthInsurance',
   has401k: 'ufCrm_6_401K_ENROLLMENT',
+  lifeBeneficiaries: 'ufCrm6LifeBeneficiaries',
 
-  // Education & Skills
+  // Tax & Payroll (5 fields)
+  paymentMethod: 'ufCrm_6_UF_USR_1737120507262',
+  taxFilingStatus: 'ufCrm6TaxFilingStatus',
+  w4Exemptions: 'ufCrm_6_W4_EXEMPTIONS',
+  additionalFedWithhold: 'ufCrm6AdditionalFedWithhold',
+  additionalStateWithhold: 'ufCrm6AdditionalStateWithhold',
+
+  // Banking & Direct Deposit (5 fields)
+  bankName: 'ufCrm6BankName',
+  bankAccountName: 'ufCrm6BankAccountName',
+  bankAccountType: 'ufCrm6BankAccountType',
+  bankRouting: 'ufCrm6BankRouting',
+  bankAccountNumber: 'ufCrm6BankAccountNumber',
+
+  // Dependents (4 fields)
+  dependentNames: 'ufCrm6DependentNames',
+  dependentSsns: 'ufCrm6DependentSsns',
+  dependentRelationships: 'ufCrm6DependentRelationships',
+  dependentsInfo: 'ufCrm6DependentsInfo',
+
+  // Education & Skills (7 fields)
   educationLevel: 'ufCrm6EducationLevel',
   schoolName: 'ufCrm6SchoolName',
   graduationYear: 'ufCrm6GraduationYear',
-  fieldOfStudy: 'ufCrm6FieldOfStudy',
+  fieldsOfStudy: 'ufCrm6FieldOfStudy', // Frontend uses plural 'fieldsOfStudy'
+  fieldOfStudy: 'ufCrm6FieldOfStudy', // Legacy alias
   skills: 'ufCrm6Skills',
   certifications: 'ufCrm6Certifications',
+  skillsLevel: 'ufCrm6SkillsLevel',
 
-  // IT & Equipment
+  // Training & Compliance (6 fields)
+  requiredTrainingStatus: 'ufCrm6RequiredTraining',
+  safetyTrainingStatus: 'ufCrm6SafetyTraining',
+  complianceTrainingStatus: 'ufCrm6ComplianceTraining',
+  trainingDate: 'ufCrm6TrainingDate',
+  nextTrainingDue: 'ufCrm6NextTrainingDue',
+  trainingNotes: 'ufCrm6TrainingNotes',
+
+  // IT & Equipment (11 fields)
   softwareExperience: 'ufCrm6SoftwareExperience',
   equipmentAssigned: 'ufCrm6EquipmentAssigned',
+  equipmentStatus: 'ufCrm6EquipmentStatus',
+  equipmentReturn: 'ufCrm6EquipmentReturn',
+  softwareAccess: 'ufCrm6SoftwareAccess',
+  accessPermissions: 'ufCrm6AccessPermissions',
+  accessLevel: 'ufCrm6AccessLevel',
+  securityClearance: 'ufCrm6SecurityClearance',
+  networkStatus: 'ufCrm6NetworkStatus',
+  vpnAccess: 'ufCrm6VpnAccess',
+  remoteAccess: 'ufCrm6RemoteAccess',
 
-  // Additional
+  // Vehicle & Licensing (2 fields)
+  driversLicenseExpiry: 'ufCrm_6_UF_USR_1747966315398_EXPIRY',
+  autoInsuranceExpiry: 'ufCrm_6_UF_USR_1737120327618_EXPIRY',
+
+  // Work Authorization (1 field)
+  visaExpiry: 'ufCrm6VisaExpiry',
+
+  // Performance & Reviews (3 fields)
+  reviewDates: 'ufCrm6ReviewDate',
+  terminationDate: 'ufCrm6TerminationDate',
+  rehireEligible: 'ufCrm6RehireEligible',
+
+  // Additional Information (1 field)
   additionalInfo: 'ufCrm6AdditionalInfo',
 };
 
 // Sensitive fields that should be redacted in audit logs
-const SENSITIVE_FIELDS = ['ufCrm6Ssn', 'ufCrm6Salary'];
+const SENSITIVE_FIELDS = [
+  'ufCrm6Ssn',
+  'ufCrm6Salary',
+  'ufCrm6BankRouting',
+  'ufCrm6BankAccountNumber',
+  'ufCrm6DependentSsns'
+];
 
 // Validation schema for employee updates
+// COMPREHENSIVE schema matching frontend - all fields optional for PATCH updates
 const EmployeeUpdateSchema = z.object({
-  // Personal Information
+  // Personal Information (18 fields)
   firstName: z.string().min(1).max(100).optional(),
   middleName: z.string().max(100).optional(),
   lastName: z.string().min(1).max(100).optional(),
   preferredName: z.string().max(100).optional(),
   dateOfBirth: z.string().regex(/^(\d{4}-\d{2}-\d{2}|)$/).optional(),
+  gender: z.string().optional(),
+  maritalStatus: z.string().optional(),
+  citizenship: z.string().optional(),
+  personalEmail: z.array(z.string().email()).optional(), // Frontend uses 'personalEmail'
+  personalPhone: z.array(z.string().regex(/^\+?[\d\s\-\(\)]+$/)).optional(), // Frontend uses 'personalPhone'
+  workPhone: z.string().optional(),
+  officePhone: z.string().optional(),
+  officeExtension: z.string().optional(),
+  address: z.string().max(500).optional(),
+  profilePhoto: z.string().optional(),
+
+  // Legacy aliases for backward compatibility
   email: z.array(z.string().email()).optional(),
   phone: z.array(z.string().regex(/^\+?[\d\s\-\(\)]+$/)).optional(),
-  address: z.string().max(500).optional(),
 
-  // Employment Details
+  // Emergency Contact (3 fields)
+  emergencyContactName: z.string().optional(),
+  emergencyContactPhone: z.string().optional(),
+  emergencyContactRelationship: z.string().optional(),
+
+  // Employment Details (11 fields)
+  badgeNumber: z.string().min(1).optional(),
   position: z.string().min(1).max(200).optional(),
   subsidiary: z.string().max(200).optional(),
   employmentStatus: z.enum(['Y', 'N']).optional(),
   hireDate: z.string().regex(/^(\d{4}-\d{2}-\d{2}|)$/).optional(),
   employmentType: z.string().max(100).optional(),
   shift: z.string().max(100).optional(),
+  payRate: z.string().optional(),
+  benefitsEligible: z.boolean().optional(),
+  salesTerritory: z.string().optional(),
+  projectCategory: z.string().optional(),
+  wcCode: z.number().optional(),
 
-  // Compensation & Benefits
+  // Compensation & Benefits (5 fields)
+  ssn: z.string().optional(),
   ptoDays: z.string().max(10).optional(),
-  healthInsurance: z.number().int().optional(),
-  has401k: z.number().int().optional(),
+  healthInsurance: z.union([z.string(), z.number().int()]).optional(), // Accept both for flexibility
+  has401k: z.union([z.string(), z.number().int()]).optional(),
+  lifeBeneficiaries: z.string().optional(),
 
-  // Education & Skills
+  // Tax & Payroll (5 fields)
+  paymentMethod: z.string().optional(),
+  taxFilingStatus: z.string().optional(),
+  w4Exemptions: z.string().optional(),
+  additionalFedWithhold: z.string().optional(),
+  additionalStateWithhold: z.string().optional(),
+
+  // Banking & Direct Deposit (5 fields)
+  bankName: z.string().optional(),
+  bankAccountName: z.string().optional(),
+  bankAccountType: z.string().optional(),
+  bankRouting: z.string().optional(),
+  bankAccountNumber: z.string().optional(),
+
+  // Dependents (4 fields)
+  dependentNames: z.array(z.string()).optional(),
+  dependentSsns: z.array(z.string()).optional(),
+  dependentRelationships: z.array(z.string()).optional(),
+  dependentsInfo: z.array(z.string()).optional(),
+
+  // Education & Skills (7 fields)
   educationLevel: z.string().max(100).optional(),
   schoolName: z.string().max(200).optional(),
   graduationYear: z.string().regex(/^(\d{4}|)$/).optional(),
-  fieldOfStudy: z.string().max(200).optional(),
-  skills: z.string().max(1000).optional(),
-  certifications: z.string().max(1000).optional(),
+  fieldsOfStudy: z.array(z.string()).optional(), // Frontend uses plural
+  fieldOfStudy: z.union([z.string().max(200), z.array(z.string())]).optional(), // Legacy alias
+  skills: z.union([z.string().max(1000), z.array(z.string())]).optional(), // Accept string or array
+  certifications: z.union([z.string().max(1000), z.array(z.string())]).optional(),
+  skillsLevel: z.string().optional(),
 
-  // IT & Equipment
-  softwareExperience: z.string().max(1000).optional(),
+  // Training & Compliance (6 fields)
+  requiredTrainingStatus: z.string().optional(),
+  safetyTrainingStatus: z.string().optional(),
+  complianceTrainingStatus: z.string().optional(),
+  trainingDate: z.string().optional(),
+  nextTrainingDue: z.string().optional(),
+  trainingNotes: z.string().optional(),
+
+  // IT & Equipment (11 fields)
+  softwareExperience: z.union([z.string().max(1000), z.array(z.string())]).optional(),
   equipmentAssigned: z.array(z.string()).optional(),
+  equipmentStatus: z.string().optional(),
+  equipmentReturn: z.string().optional(),
+  softwareAccess: z.array(z.string()).optional(),
+  accessPermissions: z.array(z.string()).optional(),
+  accessLevel: z.string().optional(),
+  securityClearance: z.string().optional(),
+  networkStatus: z.string().optional(),
+  vpnAccess: z.boolean().optional(),
+  remoteAccess: z.boolean().optional(),
 
-  // Additional
+  // Vehicle & Licensing (2 fields)
+  driversLicenseExpiry: z.string().optional(),
+  autoInsuranceExpiry: z.string().optional(),
+
+  // Work Authorization (1 field)
+  visaExpiry: z.string().optional(),
+
+  // Performance & Reviews (3 fields)
+  reviewDates: z.array(z.string()).optional(),
+  terminationDate: z.string().optional(),
+  rehireEligible: z.boolean().optional(),
+
+  // Additional Information (1 field)
   additionalInfo: z.string().max(5000).optional(),
-}).passthrough(); // Allow extra fields not in schema (they'll just be ignored)
+}).passthrough(); // Allow extra fields not in schema (they'll be filtered by FIELD_MAP)
 
 // Admin endpoints (placeholder for future)
 adminRoutes.get('/stats', async (c) => {
@@ -337,14 +495,23 @@ adminRoutes.patch('/employee/:bitrixId', async (c) => {
 
     // Map frontend field names to Bitrix field names
     const bitrixFields: Record<string, any> = {};
+    const unmappedFields: string[] = [];
     for (const [key, value] of Object.entries(validatedData)) {
       const bitrixKey = FIELD_MAP[key];
       if (bitrixKey) {
         // Only map known fields to Bitrix format
         bitrixFields[bitrixKey] = value;
+      } else {
+        // Track unmapped fields for debugging
+        unmappedFields.push(key);
       }
-      // Skip unknown fields (they're allowed by .passthrough() but won't be sent to Bitrix)
     }
+
+    // Log unmapped fields for debugging
+    if (unmappedFields.length > 0) {
+      console.log(`[PATCH /employee/${bitrixId}] Unmapped fields (will be ignored):`, unmappedFields);
+    }
+    console.log(`[PATCH /employee/${bitrixId}] Mapped fields to send to Bitrix:`, Object.keys(bitrixFields));
 
     // Fetch current employee data for diff tracking
     const bitrix = new BitrixClient(env);

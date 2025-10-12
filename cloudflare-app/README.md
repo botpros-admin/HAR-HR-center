@@ -1,317 +1,425 @@
-# Hartzell HR Center - Cloudflare Workers App
+# Hartzell HR Center - Backend (Cloudflare Workers)
 
-Employee self-service portal built with Cloudflare Workers, D1, and KV.
+Production HR portal backend built with Cloudflare Workers, D1, KV, and R2.
 
 ## Architecture
 
 ```
-hartzell.work
-    ↓
-Cloudflare Workers (API)
-    ↓
-D1 Database + KV Cache
-    ↓
-Bitrix24 API + OpenSign API
+Employee Portal (app.hartzell.work)
+    ↓ HTTPS requests
+Cloudflare Workers (hartzell.work/api/*)
+    ↓ Store/retrieve data
+D1 Database + KV Cache + R2 Storage
+    ↓ Fetch/update employee data
+Bitrix24 CRM (Entity Type 1054)
 ```
 
-## Prerequisites
+## Production Status
 
-- Node.js 20+
-- Cloudflare account with hartzell.work domain
-- Wrangler CLI (`npm install -g wrangler`)
+**✅ Deployed and Operational**
+
+- **Worker:** hartzell-hr-center-production
+- **Routes:** hartzell.work/api/*
+- **Database:** hartzell_hr_prod (9926c3a9-c6e1-428f-8c36-fdb001c326fd)
+- **KV Namespace:** 54f7714316b14265a8224c255d9a7f80
+- **R2 Buckets:** hartzell-assets-prod, hartzell-hr-templates-prod
 
 ## Quick Start
 
-### 1. Local Development
+### Prerequisites
+
+- Node.js 20+
+- Wrangler CLI: `npm install -g wrangler`
+- Cloudflare account access
+
+### Local Development
 
 ```bash
-# Clone/navigate to project
 cd cloudflare-app
 
 # Install dependencies
 npm install
 
-# Setup local environment
-chmod +x scripts/setup-local.sh
-./scripts/setup-local.sh
-
-# Start dev server
+# Start development server
 npm run dev
 
 # Open http://localhost:8787
 ```
 
-### 2. Deploy to Production
+### Deploy to Production
 
 ```bash
-# Login to Cloudflare
-wrangler login
-
-# Run deployment script
-chmod +x scripts/deploy.sh
-./scripts/deploy.sh
-
-# Or deploy manually
-wrangler d1 create hartzell_hr
-wrangler d1 execute hartzell_hr --file=./workers/schema.sql
-wrangler kv:namespace create CACHE
-wrangler secret put BITRIX24_WEBHOOK_URL
-wrangler secret put OPENSIGN_API_TOKEN
-wrangler secret put SESSION_SECRET
-wrangler secret put TURNSTILE_SECRET_KEY
+# Deploy Worker
 wrangler deploy
+
+# View logs
+wrangler tail
 ```
 
 ## Authentication Flow
 
-### Step 1: Employee ID + DOB
-```
-1. Employee enters Employee ID (EMP1001)
-2. Employee enters Date of Birth (YYYY-MM-DD)
-3. System queries Bitrix24
-4. Validates credentials
-```
+### 3-Tier Security
 
-### Step 2: SSN Verification (if required)
-```
-1. Employee enters last 4 of SSN
-2. System verifies against Bitrix24 data
-3. Creates session
-```
+**Tier 1: Badge Number + Date of Birth**
+- Employee enters badge number (e.g., EMP1001)
+- Employee enters date of birth (MM/DD/YYYY)
+- System queries Bitrix24 for employee
+- Creates session with authLevel: 1
+
+**Tier 2: ID Verification**
+- Display employee ID on screen
+- Employee verifies it matches their badge
+- UI-only verification (no API call)
+
+**Tier 3: SSN + CAPTCHA**
+- Employee enters last 4 digits of SSN
+- Employee completes hCaptcha
+- System verifies SSN against Bitrix24
+- Upgrades session to authLevel: 3
+- Generates CSRF token
 
 ### Security Features
-- Rate limiting (5 attempts per 15 minutes)
-- CAPTCHA after 3 failed attempts (Cloudflare Turnstile)
-- Session timeout (8 hours)
-- Auto-logout on inactivity (30 minutes)
-- Complete audit logging
+
+- ✅ Rate limiting (5 attempts per 15 minutes)
+- ✅ hCaptcha verification (Tier 3)
+- ✅ Session timeout (8 hours)
+- ✅ HttpOnly + Secure cookies
+- ✅ CSRF protection on mutations
+- ✅ Audit logging (via Cloudflare Analytics)
+- ✅ Sensitive field redaction in logs
 
 ## API Endpoints
 
-### Authentication
-- `POST /api/auth/login` - Login with Employee ID + DOB
-- `POST /api/auth/verify-ssn` - Verify last 4 SSN
-- `POST /api/auth/logout` - Logout
-- `GET /api/auth/session` - Validate session
+### Authentication (`/api/auth/*`)
 
-### Employee
-- `GET /api/employee/profile` - Get employee profile
-- `GET /api/employee/tasks` - Get pending tasks
-- `GET /api/employee/documents` - Get documents
+- `POST /auth/login` - Tier 1 auth (badge + DOB)
+- `POST /auth/verify-ssn` - Tier 3 auth (SSN + CAPTCHA)
+- `POST /auth/logout` - Terminate session
+- `GET /auth/session` - Validate current session
 
-### Signatures
-- `GET /api/signatures/pending` - Get pending signatures
-- `POST /api/webhooks/opensign` - OpenSign webhook
+### Employee Portal (`/api/employee/*`)
 
-## Database Schema
+- `GET /employee/profile` - Get employee profile (100+ fields)
+- `PUT /employee/profile` - Update employee field
+- `GET /employee/dashboard` - Dashboard summary
+- `GET /employee/tasks` - Pending tasks (placeholder)
+- `GET /employee/documents` - Assigned documents (placeholder)
 
-### D1 Tables
-- `sessions` - Active user sessions
-- `audit_logs` - All authentication events
-- `rate_limits` - Rate limiting data
-- `signature_requests` - OpenSign tracking
-- `pending_tasks` - Employee action items
-- `employee_cache` - Cached Bitrix24 data
-- `system_config` - System configuration
+### Admin (`/api/admin/*`)
 
-### KV Namespaces
-- `CACHE` - Employee data + session cache
+- `GET /admin/employees` - List all employees
+- `POST /admin/employees/refresh` - Sync from Bitrix24
+- `GET /admin/employee/:id` - Get employee detail
+- `PATCH /admin/employee/:id` - Update employee
+- `GET /admin/templates` - List PDF templates
+- `POST /admin/templates` - Upload template
+- `DELETE /admin/templates/:id` - Delete template
+- `PUT /admin/templates/:id/fields` - Update field positions
+- `GET /admin/assignments` - List assignments
+- `POST /admin/assignments` - Create assignment
+- `DELETE /admin/assignments/:id` - Delete assignment
+
+### Signatures (`/api/signatures/*`) - Placeholder
+
+- `GET /signatures/pending` - Placeholder endpoint
+- `GET /signatures/:id/url` - Placeholder endpoint
+
+## Database Schema (D1)
+
+### Tables
+
+```sql
+-- Session management (8-hour expiry)
+sessions (id, employee_id, bitrix_id, full_name, badge_number, auth_level, created_at, expires_at, last_activity)
+
+-- Rate limiting (15-minute window)
+login_attempts (ip_address, attempt_time, success)
+
+-- Admin authentication (bcrypt hashed)
+admin_users (id, username, password_hash, full_name, created_at, last_login)
+
+-- Employee data cache (for quick lookups)
+employee_cache (bitrix_id, badge_number, full_name, position, department, email, phone, data, last_sync)
+
+-- Signature tracking (placeholder for future)
+signature_requests (id, employee_id, document_type, document_title, status, signature_url, created_at, completed_at)
+
+-- PDF templates (stored in R2)
+templates (id, filename, category, description, field_positions, active, r2_key, created_at, updated_at)
+
+-- Document assignments
+assignments (id, template_id, employee_bitrix_id, assigned_by, status, priority, due_date, notes, created_at, completed_at)
+```
+
+### Indexes
+
+- `sessions.expires_at` - Fast session cleanup
+- `login_attempts.ip_address + attempt_time` - Rate limiting
+- `employee_cache.badge_number` - Badge lookups
 
 ## Configuration
 
 ### Environment Variables (wrangler.toml)
+
 ```toml
+[vars]
 BITRIX24_ENTITY_TYPE_ID = "1054"
-OPENSIGN_ENV = "sandbox"
-SESSION_MAX_AGE = "28800"
+SESSION_MAX_AGE = "28800"          # 8 hours in seconds
 RATE_LIMIT_MAX_ATTEMPTS = "5"
-RATE_LIMIT_WINDOW = "900"
+RATE_LIMIT_WINDOW = "900"          # 15 minutes in seconds
 ```
 
 ### Secrets (set with `wrangler secret put`)
-- `BITRIX24_WEBHOOK_URL`
-- `OPENSIGN_API_TOKEN`
-- `SESSION_SECRET`
-- `OPENSIGN_WEBHOOK_SECRET`
-- `TURNSTILE_SECRET_KEY`
+
+```bash
+# Bitrix24 API
+wrangler secret put BITRIX24_WEBHOOK_URL
+# Value: https://hartzell.app/rest/1/jp689g5yfvre9pvd
+
+# Session encryption
+wrangler secret put SESSION_SECRET
+# Value: 32-byte random hex string
+
+# hCaptcha verification
+wrangler secret put HCAPTCHA_SECRET
+# Value: hCaptcha secret key
+```
+
+### Bindings (wrangler.toml)
+
+```toml
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "hartzell_hr_prod"
+database_id = "9926c3a9-c6e1-428f-8c36-fdb001c326fd"
+
+# KV Cache
+[[kv_namespaces]]
+binding = "CACHE"
+id = "54f7714316b14265a8224c255d9a7f80"
+
+# R2 Storage
+[[r2_buckets]]
+binding = "ASSETS"
+bucket_name = "hartzell-assets-prod"
+
+[[r2_buckets]]
+binding = "DOCUMENTS"
+bucket_name = "hartzell-hr-templates-prod"
+```
 
 ## Development Commands
 
 ```bash
-# Start development server
+# Start development server (localhost:8787)
 npm run dev
 
 # Deploy to production
 npm run deploy
+# Shorthand for: wrangler deploy
 
-# Deploy to staging
-npm run deploy:staging
+# View real-time logs
+wrangler tail
 
-# Create D1 database
-npm run d1:create
+# Database operations
+wrangler d1 list
+wrangler d1 execute hartzell_hr_prod --command="SELECT COUNT(*) FROM sessions"
 
-# Run migrations
-npm run d1:migrate
+# KV operations
+wrangler kv key list --namespace-id=54f7714316b14265a8224c255d9a7f80
+wrangler kv key get "employee:badge:EMP1001" --namespace-id=54f7714316b14265a8224c255d9a7f80
 
-# Run migrations locally
-npm run d1:migrate:local
-
-# Create KV namespace
-npm run kv:create
-
-# List KV keys
-npm run kv:list
-
-# Type check
-npm run type-check
-
-# Run tests
-npm test
-
-# Watch mode
-npm run test:watch
+# R2 operations
+wrangler r2 object list hartzell-hr-templates-prod
 ```
-
-## Cloudflare Dashboard Tasks
-
-### 1. Setup Turnstile (CAPTCHA)
-1. Go to https://dash.cloudflare.com
-2. Navigate to Turnstile
-3. Create new site: `hartzell.work`
-4. Copy Site Key → Add to frontend
-5. Copy Secret Key → `wrangler secret put TURNSTILE_SECRET_KEY`
-
-### 2. Configure DNS
-1. Go to DNS settings for hartzell.work
-2. Add Worker route: `hartzell.work/*`
-3. Enable proxy (orange cloud)
-
-### 3. Monitor Workers
-- Analytics: https://dash.cloudflare.com/?to=/:account/workers/analytics
-- Logs: `wrangler tail`
-- D1 Console: https://dash.cloudflare.com/?to=/:account/d1
-
-## Security Checklist
-
-- [x] Rate limiting implemented
-- [x] CAPTCHA after 3 attempts
-- [x] SSN verification for sensitive actions
-- [x] Session timeout
-- [x] HTTPOnly + Secure cookies
-- [x] CSRF protection
-- [x] Audit logging
-- [x] Data encryption in transit (HTTPS)
-- [x] KV/D1 data at rest encryption (automatic)
 
 ## Testing
 
-### Test Login Flow
+### Test Authentication Flow
+
 ```bash
-# Test with real employee data
-curl -X POST https://hartzell.work/api/auth/login \
+# Tier 1: Login with badge + DOB
+curl -X POST http://localhost:8787/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "employeeId": "EMP1001",
-    "dateOfBirth": "1980-07-05"
+    "badgeNumber": "EMP1001",
+    "dateOfBirth": "1990-01-15"
   }'
+
+# Expected response:
+# {"success":true,"authLevel":1,"employeeId":123,"fullName":"John Doe"}
 ```
 
 ### Test Rate Limiting
+
 ```bash
-# Make 6 requests quickly
+# Make 6 requests quickly (should rate limit after 5)
 for i in {1..6}; do
-  curl -X POST https://hartzell.work/api/auth/login \
+  curl -X POST http://localhost:8787/api/auth/login \
     -H "Content-Type: application/json" \
-    -d '{"employeeId":"INVALID","dateOfBirth":"2000-01-01"}'
+    -d '{"badgeNumber":"INVALID","dateOfBirth":"2000-01-01"}'
   echo ""
 done
 ```
 
 ## Monitoring
 
-### View Logs
+### Worker Logs
+
 ```bash
-# Real-time logs
+# Live tail all requests
 wrangler tail
 
-# Filter by status
+# Filter by status code
 wrangler tail --status error
 
-# Filter by method
+# Filter by HTTP method
 wrangler tail --method POST
+
+# Pretty format
+wrangler tail --format pretty
+
+# Limited duration
+timeout 60 wrangler tail
 ```
 
-### Query Analytics
-```bash
-# View analytics
-wrangler analytics
+### Database Queries
 
-# D1 queries
-wrangler d1 execute hartzell_hr --command="SELECT COUNT(*) FROM sessions"
-wrangler d1 execute hartzell_hr --command="SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 10"
+```bash
+# Count active sessions
+wrangler d1 execute hartzell_hr_prod --command="
+SELECT COUNT(*) FROM sessions
+WHERE expires_at > CAST(strftime('%s', 'now') * 1000 AS INTEGER)
+"
+
+# Recent login attempts
+wrangler d1 execute hartzell_hr_prod --command="
+SELECT ip_address, attempt_time, success
+FROM login_attempts
+ORDER BY attempt_time DESC
+LIMIT 20
+"
+
+# Employee cache stats
+wrangler d1 execute hartzell_hr_prod --command="
+SELECT COUNT(*) as total, COUNT(DISTINCT department) as departments
+FROM employee_cache
+"
+```
+
+### KV Cache
+
+```bash
+# List all cached employees
+wrangler kv key list --namespace-id=54f7714316b14265a8224c255d9a7f80
+
+# Get specific employee
+wrangler kv key get "employee:badge:EMP1001" --namespace-id=54f7714316b14265a8224c255d9a7f80
+
+# Delete cache entry
+wrangler kv key delete "employee:badge:EMP1001" --namespace-id=54f7714316b14265a8224c255d9a7f80
 ```
 
 ## Troubleshooting
 
-### Issue: Rate limited
-**Solution:** Wait 15 minutes or clear rate limits:
+### Issue: Rate Limited
+
+**Solution:** Clear rate limits
 ```bash
-wrangler d1 execute hartzell_hr --command="DELETE FROM rate_limits WHERE identifier='EMP1001'"
+wrangler d1 execute hartzell_hr_prod --command="DELETE FROM login_attempts WHERE ip_address='YOUR_IP'"
 ```
 
-### Issue: Session expired
-**Solution:** Login again. Sessions expire after 8 hours or 30 min inactivity.
+### Issue: Session Expired
 
-### Issue: Can't access Bitrix24
-**Solution:** Check webhook URL:
-```bash
-wrangler secret put BITRIX24_WEBHOOK_URL
-# Enter: https://hartzell.app/rest/1/jp689g5yfvre9pvd
-```
+**Solution:** Sessions expire after 8 hours. Login again.
+
+### Issue: Can't Fetch Employee
+
+**Symptoms:** "Employee not found" error
+
+**Solution:**
+1. Test Bitrix24 API directly:
+   ```bash
+   curl "https://hartzell.app/rest/1/jp689g5yfvre9pvd/crm.item.list?entityTypeId=1054&filter[ufCrm6BadgeNumber]=EMP1001"
+   ```
+
+2. Check webhook secret:
+   ```bash
+   wrangler secret list | grep BITRIX24
+   ```
+
+### Issue: hCaptcha Not Working
+
+**Solution:**
+1. Check frontend has correct site key
+2. Verify backend secret:
+   ```bash
+   wrangler secret list | grep HCAPTCHA
+   ```
 
 ## Project Structure
 
 ```
 cloudflare-app/
 ├── workers/
-│   ├── index.ts          # Main Worker entry
-│   ├── types.ts          # TypeScript types
-│   ├── schema.sql        # D1 database schema
+│   ├── index.ts              # Hono app entry point
+│   ├── types.ts              # TypeScript interfaces
+│   ├── schema.sql            # D1 database schema
 │   ├── routes/
-│   │   ├── auth.ts       # Authentication routes
-│   │   ├── employee.ts   # Employee routes
-│   │   ├── signatures.ts # Signature routes
-│   │   └── admin.ts      # Admin routes
+│   │   ├── auth.ts          # Authentication endpoints
+│   │   ├── employee.ts      # Employee portal endpoints
+│   │   ├── admin.ts         # Admin dashboard endpoints
+│   │   └── signatures.ts    # Signature endpoints (placeholder)
 │   └── lib/
-│       ├── auth.ts       # Auth utilities
-│       ├── bitrix.ts     # Bitrix24 client
-│       └── opensign.ts   # OpenSign client
-├── app/                  # Frontend (Next.js - TBD)
-├── scripts/
-│   ├── deploy.sh         # Deployment script
-│   └── setup-local.sh    # Local setup script
-├── wrangler.toml         # Cloudflare config
+│       ├── auth.ts          # Session management utilities
+│       ├── bitrix.ts        # Bitrix24 API client
+│       └── captcha.ts       # hCaptcha verification
+├── wrangler.toml            # Cloudflare configuration
 ├── package.json
-└── README.md
+├── tsconfig.json
+├── DEPLOYMENT_GUIDE.md      # Detailed deployment guide
+└── README.md                # This file
 ```
 
 ## Cost Estimate
 
-**Cloudflare Free Tier:**
-- Workers: 100,000 requests/day (FREE)
-- D1: 5GB storage, 5M reads/day (FREE)
-- KV: 100K reads/day, 1K writes/day (FREE)
-- Pages: Unlimited (FREE)
+**Cloudflare Free Tier Limits:**
+- Workers: 100,000 requests/day
+- D1: 5GB storage, 5M reads/day
+- KV: 100K reads/day, 1K writes/day
+- R2: 10GB storage, 1M Class A ops/month
 
-**Expected for 39 employees:**
-- ~500 requests/day
-- ~10MB D1 storage
-- ~1,000 KV reads/day
+**Expected Usage (39 Employees):**
+- ~500 Worker requests/day (0.5% of limit)
+- ~10MB D1 storage (0.2% of limit)
+- ~1,000 KV reads/day (1% of limit)
+- ~5MB R2 storage (0.05% of limit)
 
-**Total Cost: $0/month** ✅
+**Monthly Cost: $0** ✅ (within free tier)
+
+## Production URLs
+
+- **API:** https://hartzell.work/api/*
+- **Dashboard:** https://dash.cloudflare.com/b68132a02e46f8cc02bcf9c5745a72b9
+- **Frontend:** https://app.hartzell.work
+
+## Security Checklist
+
+- [x] Rate limiting enforced
+- [x] hCaptcha on Tier 3 auth
+- [x] SSN verification for sensitive access
+- [x] Session timeout (8 hours)
+- [x] HttpOnly + Secure cookies
+- [x] CSRF protection on POST/PUT/DELETE
+- [x] Sensitive field redaction in logs
+- [x] HTTPS only (enforced by Cloudflare)
+- [x] Bcrypt password hashing (admin accounts)
 
 ---
 
-**Ready to deploy!** 🚀
+**Status:** ✅ **PRODUCTION**
 
-Run `./scripts/deploy.sh` to get started.
+**Deployed:** October 12, 2025
+
+For detailed deployment instructions, see `DEPLOYMENT_GUIDE.md`.

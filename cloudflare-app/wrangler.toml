@@ -1,5 +1,5 @@
 #:schema node_modules/wrangler/config-schema.json
-name = "hartzell-hr-center"
+name = "hartzell-hr-center-production"
 main = "workers/index.ts"
 compatibility_date = "2025-10-03"
 compatibility_flags = ["nodejs_compat"]
@@ -7,28 +7,10 @@ compatibility_flags = ["nodejs_compat"]
 # Account details
 account_id = "b68132a02e46f8cc02bcf9c5745a72b9"
 
-# DEFAULT ENVIRONMENT - For local development only
-# Note: Use specific environments (production/staging/development) for deployments
-
-# D1 Database (Development - LOCAL ONLY)
-[[d1_databases]]
-binding = "DB"
-database_name = "hartzell_hr_dev"
-database_id = "a193ff69-4192-4124-9e86-e55f29673ba8"
-
-# KV Namespace (Development - LOCAL ONLY)
-[[kv_namespaces]]
-binding = "CACHE"
-id = "8e0ddf46ecc8455d809613e5f00b1192"
-
-# R2 Storage (Development - LOCAL ONLY)
-[[r2_buckets]]
-binding = "ASSETS"
-bucket_name = "hartzell-assets-dev"
-
-[[r2_buckets]]
-binding = "DOCUMENTS"
-bucket_name = "hartzell-hr-templates-dev"
+# Routes - Production custom domain
+routes = [
+  { pattern = "hartzell.work/api/*", zone_name = "hartzell.work" }
+]
 
 # Environment Variables (non-secret)
 [vars]
@@ -38,98 +20,25 @@ SESSION_MAX_AGE = "28800"  # 8 hours in seconds
 RATE_LIMIT_MAX_ATTEMPTS = "5"
 RATE_LIMIT_WINDOW = "900"  # 15 minutes in seconds
 
-# ========================================
-# PRODUCTION ENVIRONMENT
-# ========================================
-[env.production]
-name = "hartzell-hr-center-production"
-routes = [
-  { pattern = "hartzell.work/api/*", zone_name = "hartzell.work" }
-]
-
-[env.production.vars]
-BITRIX24_ENTITY_TYPE_ID = "1054"
-SESSION_MAX_AGE = "28800"
-RATE_LIMIT_MAX_ATTEMPTS = "5"
-RATE_LIMIT_WINDOW = "900"
-OPENSIGN_ENV = "sandbox"
-
-[[env.production.d1_databases]]
+# D1 Database (Production)
+[[d1_databases]]
 binding = "DB"
 database_name = "hartzell_hr_prod"
 database_id = "9926c3a9-c6e1-428f-8c36-fdb001c326fd"
 
-[[env.production.kv_namespaces]]
+# KV Namespace (Production)
+[[kv_namespaces]]
 binding = "CACHE"
 id = "54f7714316b14265a8224c255d9a7f80"
 
-[[env.production.r2_buckets]]
+# R2 Storage (Production)
+[[r2_buckets]]
 binding = "ASSETS"
 bucket_name = "hartzell-assets-prod"
 
-[[env.production.r2_buckets]]
+[[r2_buckets]]
 binding = "DOCUMENTS"
 bucket_name = "hartzell-hr-templates-prod"
-
-# ========================================
-# STAGING ENVIRONMENT
-# ========================================
-[env.staging]
-name = "hartzell-hr-center-staging"
-
-[env.staging.vars]
-BITRIX24_ENTITY_TYPE_ID = "1054"
-SESSION_MAX_AGE = "28800"
-RATE_LIMIT_MAX_ATTEMPTS = "5"
-RATE_LIMIT_WINDOW = "900"
-OPENSIGN_ENV = "sandbox"
-
-[[env.staging.d1_databases]]
-binding = "DB"
-database_name = "hartzell_hr_staging"
-database_id = "114317f0-6441-4201-8757-b300acd822d8"
-
-[[env.staging.kv_namespaces]]
-binding = "CACHE"
-id = "540544d672e443d597b93065e6f48c93"
-
-[[env.staging.r2_buckets]]
-binding = "ASSETS"
-bucket_name = "hartzell-assets-staging"
-
-[[env.staging.r2_buckets]]
-binding = "DOCUMENTS"
-bucket_name = "hartzell-hr-templates-staging"
-
-# ========================================
-# DEVELOPMENT ENVIRONMENT
-# ========================================
-[env.development]
-name = "hartzell-hr-center-dev"
-
-[env.development.vars]
-BITRIX24_ENTITY_TYPE_ID = "1054"
-SESSION_MAX_AGE = "28800"
-RATE_LIMIT_MAX_ATTEMPTS = "5"
-RATE_LIMIT_WINDOW = "900"
-OPENSIGN_ENV = "sandbox"
-
-[[env.development.d1_databases]]
-binding = "DB"
-database_name = "hartzell_hr_dev"
-database_id = "a193ff69-4192-4124-9e86-e55f29673ba8"
-
-[[env.development.kv_namespaces]]
-binding = "CACHE"
-id = "8e0ddf46ecc8455d809613e5f00b1192"
-
-[[env.development.r2_buckets]]
-binding = "ASSETS"
-bucket_name = "hartzell-assets-dev"
-
-[[env.development.r2_buckets]]
-binding = "DOCUMENTS"
-bucket_name = "hartzell-hr-templates-dev"
 
 # Observability
 [observability]
