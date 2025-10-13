@@ -10,6 +10,8 @@ const config: Config = {
     extend: {
       screens: {
         'xs': '500px',
+        'md': '1024px',  // Override md to be 1024px (same as lg)
+        'lg': '1280px',  // Override lg to be 1280px (same as xl)
       },
       colors: {
         hartzell: {
