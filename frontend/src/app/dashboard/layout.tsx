@@ -121,7 +121,7 @@ export default function DashboardLayout({
 
       {/* Mobile Menu */}
       {mobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 top-16 bg-black bg-opacity-50 z-10" onClick={() => setMobileMenuOpen(false)}>
+        <div className="lg:hidden fixed inset-0 top-16 bg-black bg-opacity-50 z-30" onClick={() => setMobileMenuOpen(false)}>
           <div className="bg-white w-64 h-full shadow-lg" onClick={(e) => e.stopPropagation()}>
             {/* User Info */}
             <div className="p-4 border-b border-gray-200">

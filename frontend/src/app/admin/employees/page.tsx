@@ -1,6 +1,6 @@
 'use client';
 
-import { Search, User, Mail, Phone, Briefcase, Calendar, CheckCircle, XCircle, RefreshCw, Eye } from 'lucide-react';
+import { Search, User, Mail, Phone, Briefcase, RefreshCw, Eye } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useState } from 'react';
@@ -150,12 +150,6 @@ export default function EmployeesPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Contact
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Hire Date
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Status
-                  </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Actions
                   </th>
@@ -163,8 +157,15 @@ export default function EmployeesPage() {
               </thead>
               <tbody className="divide-y divide-gray-200">
                 {filteredEmployees.map((employee: any) => (
-                  <tr key={employee.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="sticky left-0 z-20 px-6 py-4 whitespace-nowrap bg-white shadow-[4px_0_6px_-1px_rgba(0,0,0,0.1)]">
+                  <tr
+                    key={employee.id}
+                    className={`hover:bg-gray-50 transition-colors ${
+                      employee.employmentStatus === 'Inactive' ? 'bg-red-50/50' : ''
+                    }`}
+                  >
+                    <td className={`sticky left-0 z-20 px-6 py-4 whitespace-nowrap shadow-[4px_0_6px_-1px_rgba(0,0,0,0.1)] ${
+                      employee.employmentStatus === 'Inactive' ? 'bg-red-50/50' : 'bg-white'
+                    }`}>
                       <div className="flex items-center">
                         <div className="w-10 h-10 bg-hartzell-blue rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
                           {employee.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
@@ -202,31 +203,6 @@ export default function EmployeesPage() {
                           </div>
                         )}
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center text-sm text-gray-900">
-                        {employee.hireDate ? (
-                          <>
-                            <Calendar className="w-4 h-4 text-gray-400 mr-2" />
-                            {new Date(employee.hireDate).toLocaleDateString()}
-                          </>
-                        ) : (
-                          <span className="text-gray-400">N/A</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {employee.employmentStatus === 'Active' ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                          <CheckCircle className="w-3 h-3 mr-1" />
-                          Active
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                          <XCircle className="w-3 h-3 mr-1" />
-                          Inactive
-                        </span>
-                      )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
                       <button
