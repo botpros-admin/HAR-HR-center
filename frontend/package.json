@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "verify:responsive": "bash scripts/verify-responsive.sh",
+    "deploy": "npm run build && npm run verify:responsive && npx wrangler pages deploy out --project-name=hartzell-hr-frontend",
+    "deploy:force": "npm run build && npx wrangler pages deploy out --project-name=hartzell-hr-frontend"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.28.0",
