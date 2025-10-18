@@ -235,25 +235,29 @@ HR Center/
 
 ## 🚀 Deployment
 
-### Quick Deploy
+### Quick Deploy (Recommended Method)
 
 **Backend (Worker):**
 ```bash
 cd cloudflare-app
-wrangler deploy  # Always deploys to production
+wrangler deploy
 ```
 
 **Frontend (Pages):**
 ```bash
 cd frontend
-export NODE_OPTIONS="--max-old-space-size=4096"
-npm run build  # Generates static export to ./out
-npx wrangler pages deploy out --project-name=hartzell-hr-frontend
+npm run deploy
 ```
 
+This automatically:
+- Cleans build caches
+- Builds the Next.js app
+- Deploys to Cloudflare Pages (app.hartzell.work)
+
 **Full deployment documentation:**
-- Backend: `/cloudflare-app/DEPLOYMENT_GUIDE.md`
-- Frontend: `/frontend/DEPLOYMENT_GUIDE.md`
+- Quick Guide: `QUICK_DEPLOY_GUIDE.md`
+- Complete Guide: `DEPLOYMENT_GUIDE.md`
+- Backend Details: `cloudflare-app/DEPLOYMENT_GUIDE.md`
 
 ---
 

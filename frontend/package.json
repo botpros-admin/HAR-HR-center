@@ -8,13 +8,13 @@
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
-    "verify:responsive": "bash scripts/verify-responsive.sh",
-    "deploy": "npm run build && npm run verify:responsive && npx wrangler pages deploy out --project-name=hartzell-hr-frontend",
-    "deploy:force": "npm run build && npx wrangler pages deploy out --project-name=hartzell-hr-frontend"
+    "deploy": "bash deploy.sh",
+    "deploy:quick": "rm -rf .next out node_modules/.cache && npm run build && npx wrangler pages deploy out --project-name=hartzell-hr-frontend --branch=main --commit-dirty=true"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.28.0",
     "@tanstack/react-query-devtools": "^5.90.2",
+    "@types/react-signature-canvas": "^1.0.7",
     "clsx": "^2.1.0",
     "date-fns": "^3.6.0",
     "lottie-react": "^2.4.1",
@@ -25,10 +25,11 @@
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-pdf": "^10.1.0",
+    "react-signature-canvas": "^1.1.0-alpha.2",
+    "xlsx": "^0.18.5",
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@cloudflare/next-on-pages": "^1.13.16",
     "@types/node": "^20.11.0",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
@@ -37,7 +38,6 @@
     "eslint-config-next": "^14.2.0",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",
-    "typescript": "^5.4.0",
-    "vercel": "^48.2.9"
+    "typescript": "^5.4.0"
   }
 }

@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Upload, FileText, Trash2, Edit, Eye, Plus, Search, Filter, MousePointer, Type, CheckSquare, Calendar, X, Save } from 'lucide-react';
+import { Upload, FileText, Trash2, Edit, Eye, Plus, Search, Filter, MousePointer, Type, CheckSquare, Calendar, X, Save, Circle } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Toast, ToastContainer } from '@/components/Toast';
+import { TemplateWorkflowConfig, DefaultSignerConfig } from '@/components/TemplateWorkflowConfig';
 // Dynamically import react-pdf to avoid SSR issues
 import dynamic from 'next/dynamic';
 
@@ -34,6 +35,7 @@ interface DocumentTemplate {
   fileName: string;
   fileSize: number;
   requiresSignature: boolean;
+  defaultSignerConfig?: string | null;
   isActive: boolean;
   createdAt: string;
   createdBy: string;
@@ -44,6 +46,7 @@ export default function TemplatesPage() {
   const [showFieldEditor, setShowFieldEditor] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [templateToDelete, setTemplateToDelete] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<any>(null);
   const [editorMode, setEditorMode] = useState<'view' | 'edit'>('edit');
   const [currentTemplate, setCurrentTemplate] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -74,9 +77,16 @@ export default function TemplatesPage() {
     mutationFn: (templateId: string) => api.deleteTemplate(templateId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['templates'] });
+      setDeleteError(null);
+      setShowDeleteModal(false);
+      setTemplateToDelete(null);
+      showToast('Template deleted successfully', 'success');
     },
     onError: (error: any) => {
       console.error('Failed to delete template:', error);
+      // Store the full error response for the modal to display
+      setDeleteError(error);
+      // Keep modal open to show the error
     }
   });
 
@@ -203,7 +213,7 @@ export default function TemplatesPage() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {filteredTemplates.map((template) => (
             <TemplateCard
               key={template.id}
@@ -220,6 +230,7 @@ export default function TemplatesPage() {
               }}
               onDelete={() => {
                 setTemplateToDelete(template.id);
+                setDeleteError(null);
                 setShowDeleteModal(true);
               }}
               isDeleting={deleteMutation.isPending}
@@ -264,44 +275,99 @@ export default function TemplatesPage() {
       {/* Delete Confirmation Modal */}
       {showDeleteModal && templateToDelete && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
-                <Trash2 className="w-6 h-6 text-red-600" />
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 ${deleteError ? 'bg-yellow-100' : 'bg-red-100'}`}>
+                <Trash2 className={`w-6 h-6 ${deleteError ? 'text-yellow-600' : 'text-red-600'}`} />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-gray-900">Delete Template?</h3>
-                <p className="text-sm text-gray-600">This action cannot be undone</p>
+                <h3 className="text-lg font-bold text-gray-900">
+                  {deleteError ? 'Cannot Delete Template' : 'Delete Template?'}
+                </h3>
+                <p className="text-sm text-gray-600">
+                  {deleteError ? 'Active assignments must be canceled first' : 'This action cannot be undone'}
+                </p>
               </div>
             </div>
 
-            <p className="text-gray-700 mb-6">
-              Are you sure you want to delete this template? All signature field configurations will be permanently removed.
-            </p>
+            {deleteError && deleteError.response?.activeAssignments ? (
+              <div className="mb-6">
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+                  <p className="text-yellow-900 font-medium mb-2">
+                    {deleteError.response.message || 'This template has active assignments'}
+                  </p>
+                  <p className="text-sm text-yellow-800">
+                    You must cancel all assignments before deleting this template.
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <h4 className="font-semibold text-gray-900 text-sm">
+                    Active Assignments ({deleteError.response.totalActiveAssignments}):
+                  </h4>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {deleteError.response.activeAssignments.map((assignment: any, index: number) => (
+                      <div key={index} className="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <p className="font-medium text-gray-900">
+                              {assignment.employeeName || 'Unknown Employee'}
+                            </p>
+                            <div className="text-sm text-gray-600 mt-1 space-y-1">
+                              {assignment.badgeNumber && (
+                                <p>Badge: {assignment.badgeNumber}</p>
+                              )}
+                              {assignment.email && (
+                                <p>Email: {assignment.email}</p>
+                              )}
+                              {assignment.dueDate && (
+                                <p>Due: {new Date(assignment.dueDate).toLocaleDateString()}</p>
+                              )}
+                            </div>
+                          </div>
+                          <span className={`text-xs px-2 py-1 rounded-full ${
+                            assignment.status === 'assigned'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {assignment.status.charAt(0).toUpperCase() + assignment.status.slice(1)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-700 mb-6">
+                Are you sure you want to delete this template? All signature field configurations will be permanently removed.
+              </p>
+            )}
 
             <div className="flex gap-3">
               <button
                 onClick={() => {
                   setShowDeleteModal(false);
                   setTemplateToDelete(null);
+                  setDeleteError(null);
                 }}
                 className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
               >
-                Cancel
+                {deleteError ? 'Close' : 'Cancel'}
               </button>
-              <button
-                onClick={() => {
-                  if (templateToDelete) {
-                    deleteMutation.mutate(templateToDelete);
-                  }
-                  setShowDeleteModal(false);
-                  setTemplateToDelete(null);
-                }}
-                disabled={deleteMutation.isPending}
-                className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete Template'}
-              </button>
+              {!deleteError && (
+                <button
+                  onClick={() => {
+                    if (templateToDelete) {
+                      deleteMutation.mutate(templateToDelete);
+                    }
+                  }}
+                  disabled={deleteMutation.isPending}
+                  className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deleteMutation.isPending ? 'Deleting...' : 'Delete Template'}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -323,6 +389,9 @@ function TemplateCard({
   onDelete: () => void;
   isDeleting: boolean;
 }) {
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
+  const [thumbnailLoading, setThumbnailLoading] = useState(true);
+
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -337,75 +406,157 @@ function TemplateCard({
     other: 'bg-gray-100 text-gray-800'
   };
 
-  const handleDelete = () => {
-    onDelete();
+  const categoryLabels: Record<string, string> = {
+    onboarding: 'Onboarding',
+    tax: 'Tax Forms',
+    benefits: 'Benefits',
+    policy: 'Policies',
+    other: 'Other'
   };
 
+  // Parse workflow config to show badge
+  let workflowBadge: { text: string; color: string } | null = null;
+  if (template.defaultSignerConfig) {
+    try {
+      const config = JSON.parse(template.defaultSignerConfig);
+      if (config.mode === 'multi_signer' && config.signers && config.signers.length > 0) {
+        workflowBadge = {
+          text: `${config.signers.length} Signers`,
+          color: 'bg-indigo-100 text-indigo-800'
+        };
+      }
+    } catch (e) {
+      // Invalid JSON, ignore
+    }
+  }
+
+  // Load PDF thumbnail
+  useEffect(() => {
+    let mounted = true;
+    let blobUrl: string | null = null;
+
+    const loadPdf = async () => {
+      try {
+        setThumbnailLoading(true);
+        const response = await fetch(`https://hartzell.work/api/admin/templates/${template.id}/download`, {
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/pdf'
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to load PDF');
+        }
+
+        const blob = await response.blob();
+        blobUrl = URL.createObjectURL(blob);
+
+        if (mounted) {
+          setPdfBlobUrl(blobUrl);
+          setThumbnailLoading(false);
+        }
+      } catch (error) {
+        console.error('Error loading PDF thumbnail:', error);
+        if (mounted) {
+          setThumbnailLoading(false);
+        }
+      }
+    };
+
+    loadPdf();
+
+    return () => {
+      mounted = false;
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+      }
+    };
+  }, [template.id]);
+
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow">
-      {/* Card Header */}
-      <div className="p-4 border-b border-gray-100">
-        <div className="flex items-start justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-hartzell-blue" />
-            <span className={`text-xs font-medium px-2 py-1 rounded ${categoryColors[template.category] || categoryColors.other}`}>
-              {template.category}
-            </span>
+    <div className="group bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-lg transition-all overflow-hidden">
+      {/* Thumbnail Section - Full Top */}
+      <div className="relative bg-gray-100 flex items-center justify-center overflow-hidden" style={{ height: '160px' }}>
+        {thumbnailLoading ? (
+          <div className="flex flex-col items-center justify-center h-full p-3">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-hartzell-blue mb-1"></div>
+            <p className="text-xs text-gray-500">Loading...</p>
           </div>
+        ) : pdfBlobUrl ? (
+          <Document
+            file={pdfBlobUrl}
+            loading=""
+            error={
+              <div className="flex items-center justify-center h-full p-2">
+                <FileText className="w-10 h-10 text-gray-400" />
+              </div>
+            }
+          >
+            <Page
+              pageNumber={1}
+              width={140}
+              renderTextLayer={false}
+              renderAnnotationLayer={false}
+              loading=""
+            />
+          </Document>
+        ) : (
+          <div className="flex items-center justify-center h-full">
+            <FileText className="w-10 h-10 text-gray-400" />
+          </div>
+        )}
+
+        {/* Action Buttons Overlay - Show on Hover */}
+        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-60 transition-all flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100">
+          <button
+            onClick={onView}
+            className="p-2.5 bg-white text-gray-700 rounded-full hover:bg-gray-100 transition-colors shadow-lg"
+            title="View fields"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
+          <button
+            onClick={onEdit}
+            className="p-2.5 bg-hartzell-blue text-white rounded-full hover:bg-blue-700 transition-colors shadow-lg"
+            title="Edit fields"
+          >
+            <Edit className="w-4 h-4" />
+          </button>
+          <button
+            onClick={onDelete}
+            disabled={isDeleting}
+            className="p-2.5 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Delete"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Content Section - Bottom */}
+      <div className="p-2">
+        {/* Badges */}
+        <div className="flex items-center gap-1 flex-wrap mb-1">
+          <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${categoryColors[template.category] || categoryColors.other}`}>
+            {categoryLabels[template.category] || template.category}
+          </span>
+          {workflowBadge && (
+            <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${workflowBadge.color}`}>
+              {workflowBadge.text}
+            </span>
+          )}
           {template.requiresSignature && (
-            <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded font-medium">
+            <span className="text-xs bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded font-medium">
               Signature
             </span>
           )}
         </div>
-        <h3 className="font-semibold text-gray-900 mb-1">{template.title}</h3>
-        <p className="text-sm text-gray-600 line-clamp-2">{template.description}</p>
-      </div>
 
-      {/* Card Body */}
-      <div className="p-4 space-y-2">
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-500">File:</span>
-          <span className="text-gray-900 font-medium text-xs truncate max-w-[150px]" title={template.fileName}>
-            {template.fileName}
-          </span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-500">Size:</span>
-          <span className="text-gray-900 font-medium">{formatFileSize(template.fileSize)}</span>
-        </div>
-        <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-500">Created:</span>
-          <span className="text-gray-900 font-medium">{new Date(template.createdAt).toLocaleDateString()}</span>
-        </div>
-      </div>
-
-      {/* Card Actions */}
-      <div className="p-4 border-t border-gray-100 flex items-center gap-2">
-        <button
-          onClick={onView}
-          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-          title="View fields"
-        >
-          <Eye className="w-4 h-4" />
-          View
-        </button>
-        <button
-          onClick={onEdit}
-          className="flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-hartzell-blue bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-          title="Edit fields"
-        >
-          <Edit className="w-4 h-4" />
-          Edit
-        </button>
-        <button
-          onClick={handleDelete}
-          disabled={isDeleting}
-          className="flex items-center justify-center p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Delete"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
+        {/* Title */}
+        <h3 className="font-semibold text-sm text-gray-900 line-clamp-1" title={template.title}>
+          {template.title}
+        </h3>
       </div>
     </div>
   );
@@ -431,6 +582,22 @@ function UploadModal({
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [workflowConfig, setWorkflowConfig] = useState<DefaultSignerConfig>({ mode: 'single_signer' });
+
+  // Fetch employees for person selector
+  const { data: employeesData } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => api.getEmployees(),
+  });
+
+  // Get session for current admin name
+  const { data: sessionData } = useQuery({
+    queryKey: ['session'],
+    queryFn: () => api.getSession(),
+  });
+
+  const employees = employeesData?.employees || [];
+  const currentAdminName = sessionData?.session?.name || 'You';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -449,6 +616,9 @@ function UploadModal({
       uploadFormData.append('description', formData.description);
       uploadFormData.append('category', formData.category);
       uploadFormData.append('requiresSignature', String(formData.requiresSignature));
+
+      // Include workflow configuration
+      uploadFormData.append('defaultSignerConfig', JSON.stringify(workflowConfig));
 
       const result = await api.uploadTemplate(uploadFormData);
       onSuccess(result.template);
@@ -604,6 +774,18 @@ function UploadModal({
             </label>
           </div>
 
+          {/* Workflow Configuration - Only shown when signature is required */}
+          {formData.requiresSignature && (
+            <div className="border-t border-gray-200 pt-4">
+              <TemplateWorkflowConfig
+                value={workflowConfig}
+                onChange={setWorkflowConfig}
+                currentAdminName={currentAdminName}
+                employees={employees}
+              />
+            </div>
+          )}
+
           {/* Actions */}
           <div className="flex items-center gap-3 pt-4 border-t border-gray-200">
             <button
@@ -637,6 +819,8 @@ interface Field {
   height: number;     // Percentage (0-100) relative to page height
   label?: string;
   required: boolean;  // Mandatory vs optional - employees can't proceed without completing required fields
+  signerIndex?: number; // Index of signer in workflow (0 = first signer, 1 = second, etc.)
+  signerRole?: string;  // Role name for display ("Employee", "Manager", etc.)
 }
 
 function FieldEditorModal({
@@ -656,7 +840,7 @@ function FieldEditorModal({
   const [containerRef, setContainerRef] = useState<HTMLDivElement | null>(null);
   const [draggingField, setDraggingField] = useState<{ id: string; startX: number; startY: number; fieldX: number; fieldY: number; pageNumber: number } | null>(null);
   const [resizingField, setResizingField] = useState<{ id: string; startX: number; startY: number; startWidth: number; startHeight: number; pageNumber: number } | null>(null);
-  const [draggingNewField, setDraggingNewField] = useState<{ type: Field['type']; x: number; y: number; pageNumber?: number } | null>(null);
+  const [draggingNewField, setDraggingNewField] = useState<{ type: Field['type']; x: number; y: number; pageNumber?: number; signerIndex?: number; signerRole?: string } | null>(null);
 
   // Refs to track each page's overlay div for coordinate calculations
   const pageOverlayRefs = useState<Map<number, HTMLDivElement>>(new Map())[0];
@@ -670,8 +854,46 @@ function FieldEditorModal({
   const [pageHeights, setPageHeights] = useState<number[]>([]);
   const [pageWidths, setPageWidths] = useState<number[]>([]);
 
+  // Workflow signers state
+  const [workflowSigners, setWorkflowSigners] = useState<Array<{
+    index: number;
+    roleName: string;
+    signerType: string;
+    color: string;
+  }>>([]);
+  const [selectedSignerIndex, setSelectedSignerIndex] = useState<number>(0);
+
   const isViewMode = mode === 'view';
   const allPagesLoaded = loadedPages.size === numPages && numPages > 0;
+
+  // Parse workflow config from template
+  useEffect(() => {
+    if (template.defaultSignerConfig) {
+      try {
+        const config = JSON.parse(template.defaultSignerConfig);
+        if (config.mode === 'multi_signer' && config.signers) {
+          const signerColors = [
+            'bg-blue-600',    // Signer 1 (usually Employee)
+            'bg-green-600',   // Signer 2 (usually Manager)
+            'bg-purple-600',  // Signer 3 (usually HR Admin)
+            'bg-orange-600',  // Signer 4 (if exists)
+            'bg-pink-600',    // Signer 5 (if exists)
+          ];
+
+          const parsedSigners = config.signers.map((signer: any, index: number) => ({
+            index,
+            roleName: signer.roleName || `Signer ${index + 1}`,
+            signerType: signer.signerType,
+            color: signerColors[index] || 'bg-gray-600'
+          }));
+
+          setWorkflowSigners(parsedSigners);
+        }
+      } catch (e) {
+        console.error('Failed to parse workflow config:', e);
+      }
+    }
+  }, [template.defaultSignerConfig]);
 
   // Load PDF as blob to ensure authentication works
   useEffect(() => {
@@ -761,13 +983,88 @@ function FieldEditorModal({
     }
   }, [template.fieldPositions, allPagesLoaded, pageWidths, pageHeights, loadedPages, numPages]);
 
-  const fieldTypes = [
-    { type: 'signature' as const, label: 'Signature', icon: MousePointer, color: 'bg-blue-600', example: 'John Doe' },
-    { type: 'initials' as const, label: 'Initials', icon: Type, color: 'bg-indigo-600', example: 'JD' },
-    { type: 'checkbox' as const, label: 'Checkbox', icon: CheckSquare, color: 'bg-slate-600', example: '☑' },
-    { type: 'date' as const, label: 'Date', icon: Calendar, color: 'bg-cyan-700', example: new Date().toLocaleDateString() },
-    { type: 'text' as const, label: 'Text', icon: Type, color: 'bg-gray-600', example: 'Enter text...' }
-  ];
+  // Generate signer-specific field types or generic field types
+  const generateFieldTypes = () => {
+    if (workflowSigners.length === 0) {
+      // No multi-signer workflow - show generic fields
+      return [
+        { type: 'signature' as const, label: 'Signature', icon: MousePointer, color: 'bg-blue-600', example: 'John Doe', signerIndex: undefined, signerRole: undefined },
+        { type: 'initials' as const, label: 'Initials', icon: Circle, color: 'bg-indigo-600', example: 'JD', signerIndex: undefined, signerRole: undefined },
+        { type: 'checkbox' as const, label: 'Checkbox', icon: CheckSquare, color: 'bg-slate-600', example: '☑', signerIndex: undefined, signerRole: undefined },
+        { type: 'date' as const, label: 'Date', icon: Calendar, color: 'bg-cyan-700', example: new Date().toLocaleDateString(), signerIndex: undefined, signerRole: undefined },
+        { type: 'text' as const, label: 'Text', icon: Type, color: 'bg-gray-600', example: 'Enter text...', signerIndex: undefined, signerRole: undefined }
+      ];
+    }
+
+    // Multi-signer workflow - generate signer-specific fields
+    const signerFieldTypes: any[] = [];
+
+    workflowSigners.forEach((signer, signerIndex) => {
+      // Add signature field for this signer
+      signerFieldTypes.push({
+        type: 'signature' as const,
+        label: `${signer.roleName} Signature`,
+        icon: MousePointer,
+        color: signer.color,
+        example: 'John Doe',
+        signerIndex,
+        signerRole: signer.roleName,
+        groupLabel: `${signer.roleName.toUpperCase()} FIELDS`
+      });
+
+      // Add initials field for this signer
+      signerFieldTypes.push({
+        type: 'initials' as const,
+        label: `${signer.roleName} Initials`,
+        icon: Circle,
+        color: signer.color,
+        example: 'JD',
+        signerIndex,
+        signerRole: signer.roleName,
+        groupLabel: `${signer.roleName.toUpperCase()} FIELDS`
+      });
+
+      // Add checkbox field for this signer
+      signerFieldTypes.push({
+        type: 'checkbox' as const,
+        label: `${signer.roleName} Checkbox`,
+        icon: CheckSquare,
+        color: signer.color,
+        example: '☑',
+        signerIndex,
+        signerRole: signer.roleName,
+        groupLabel: `${signer.roleName.toUpperCase()} FIELDS`
+      });
+
+      // Add date field for this signer
+      signerFieldTypes.push({
+        type: 'date' as const,
+        label: `${signer.roleName} Date`,
+        icon: Calendar,
+        color: signer.color,
+        example: new Date().toLocaleDateString(),
+        signerIndex,
+        signerRole: signer.roleName,
+        groupLabel: `${signer.roleName.toUpperCase()} FIELDS`
+      });
+
+      // Add text field for this signer
+      signerFieldTypes.push({
+        type: 'text' as const,
+        label: `${signer.roleName} Text`,
+        icon: Type,
+        color: signer.color,
+        example: 'Enter text...',
+        signerIndex,
+        signerRole: signer.roleName,
+        groupLabel: `${signer.roleName.toUpperCase()} FIELDS`
+      });
+    });
+
+    return signerFieldTypes;
+  };
+
+  const fieldTypes = generateFieldTypes();
 
   const fieldDimensions = {
     signature: { width: 20, height: 5 },
@@ -778,10 +1075,21 @@ function FieldEditorModal({
   };
 
   // Handle drag start from sidebar
-  const handleSidebarDragStart = (e: React.DragEvent, fieldType: Field['type']) => {
+  const handleSidebarDragStart = (
+    e: React.DragEvent,
+    fieldType: Field['type'],
+    signerIndex?: number,
+    signerRole?: string
+  ) => {
     if (isViewMode) return;
     e.dataTransfer.effectAllowed = 'copy';
     e.dataTransfer.setData('fieldType', fieldType);
+    if (signerIndex !== undefined) {
+      e.dataTransfer.setData('signerIndex', String(signerIndex));
+    }
+    if (signerRole) {
+      e.dataTransfer.setData('signerRole', signerRole);
+    }
   };
 
   // Handle drag over document - updated for multi-page support
@@ -805,7 +1113,12 @@ function FieldEditorModal({
     e.preventDefault();
 
     const fieldType = e.dataTransfer.getData('fieldType') as Field['type'];
+    const signerIndexStr = e.dataTransfer.getData('signerIndex');
+    const signerRole = e.dataTransfer.getData('signerRole');
+
     if (!fieldType) return;
+
+    const signerIndex = signerIndexStr ? parseInt(signerIndexStr) : undefined;
 
     // Get the page overlay element to calculate coordinates relative to this page
     const pageOverlay = e.currentTarget as HTMLElement;
@@ -827,8 +1140,12 @@ function FieldEditorModal({
       width: fieldWidth,
       height: fieldHeight,
       pageNumber: pageNum, // Use the actual page number from drop target
-      label: `${fieldType.charAt(0).toUpperCase() + fieldType.slice(1)} ${fields.filter(f => f.type === fieldType).length + 1}`,
-      required: true // Default to mandatory
+      label: signerRole
+        ? `${signerRole} ${fieldType.charAt(0).toUpperCase() + fieldType.slice(1)}`
+        : `${fieldType.charAt(0).toUpperCase() + fieldType.slice(1)} ${fields.filter(f => f.type === fieldType).length + 1}`,
+      required: true, // Default to mandatory
+      signerIndex: signerIndex !== undefined ? signerIndex : undefined,
+      signerRole: signerRole || undefined
     };
 
     setFields([...fields, newField]);
@@ -929,6 +1246,23 @@ function FieldEditorModal({
   };
 
   const handleSaveFields = async () => {
+    // Validation: Check if all signers have at least one field
+    if (workflowSigners.length > 0) {
+      const signersWithoutFields = workflowSigners.filter((signer, idx) => {
+        return fields.filter(f => f.signerIndex === idx).length === 0;
+      });
+
+      if (signersWithoutFields.length > 0) {
+        const signerNames = signersWithoutFields.map(s => s.roleName).join(', ');
+        const confirmed = confirm(
+          `Warning: The following signers have no fields assigned: ${signerNames}\n\n` +
+          `This means they won't have anything to sign. Continue anyway?`
+        );
+
+        if (!confirmed) return;
+      }
+    }
+
     setIsSaving(true);
 
     try {
@@ -956,6 +1290,8 @@ function FieldEditorModal({
           page: field.pageNumber,
           label: field.label,
           required: field.required ?? true, // Default to required if not set
+          signerIndex: field.signerIndex, // Save signer assignment
+          signerRole: field.signerRole,   // Save signer role
           // Include page dimensions for backend coordinate transformation
           pageHeight: pageHeight,
           pageWidth: pageWidth
@@ -977,8 +1313,13 @@ function FieldEditorModal({
     }
   };
 
-  const getFieldColor = (type: Field['type']) => {
-    return fieldTypes.find(ft => ft.type === type)?.color || 'bg-gray-500';
+  const getFieldColor = (field: Field) => {
+    // Use signer-specific color if available
+    if (field.signerIndex !== undefined && workflowSigners[field.signerIndex]) {
+      return workflowSigners[field.signerIndex].color;
+    }
+    // Fallback to type-based color for single-signer mode
+    return fieldTypes.find(ft => ft.type === field.type)?.color || 'bg-gray-500';
   };
 
   const getFieldExample = (type: Field['type']) => {
@@ -1017,6 +1358,11 @@ function FieldEditorModal({
                 {!isViewMode && ' - Drag field types from sidebar onto document • Drag to move • Resize from corner'}
               </p>
             </div>
+            {numPages > 0 && (
+              <div className="bg-gray-800 text-white text-xs px-3 py-1.5 rounded-lg shadow-lg">
+                {numPages} {numPages === 1 ? 'Page' : 'Pages'}
+              </div>
+            )}
             <button
               onClick={onClose}
               className="flex-shrink-0 p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
@@ -1029,7 +1375,7 @@ function FieldEditorModal({
         {/* Main Content Area - Flex Row for PDF and Sidebar */}
         <div className="flex-1 flex overflow-hidden">
           {/* PDF Viewer */}
-          <div className="flex-1 bg-gray-100 overflow-y-auto">
+          <div className="flex-1 bg-gray-100 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
             <div
               className="flex items-start justify-center p-2 sm:p-4"
               onMouseMove={handleMouseMove}
@@ -1040,7 +1386,7 @@ function FieldEditorModal({
               <div className="w-full max-w-4xl">
                 <div
                   ref={setContainerRef}
-                  className="relative w-full bg-white shadow-lg rounded-lg"
+                  className="relative w-full"
                 >
                 {/* PDF iframe with loading and error states */}
                 {pdfLoading && (
@@ -1093,12 +1439,7 @@ function FieldEditorModal({
                     className={allPagesLoaded ? '' : 'hidden'}
                   >
                     {Array.from({ length: numPages }, (_, i) => i + 1).map(pageNum => (
-                      <div key={pageNum} className="relative mb-4 bg-white shadow-lg rounded-lg">
-                        {/* Page number indicator */}
-                        <div className="absolute top-2 right-2 bg-gray-800 bg-opacity-75 text-white text-xs px-2 py-1 rounded z-20 pointer-events-none">
-                          Page {pageNum} of {numPages}
-                        </div>
-
+                      <div key={pageNum} className="relative mb-4 shadow-md" style={{ width: '800px' }}>
                         <Page
                           pageNumber={pageNum}
                           width={800}
@@ -1126,7 +1467,7 @@ function FieldEditorModal({
                           ref={(el) => {
                             if (el) pageOverlayRefs.set(pageNum, el);
                           }}
-                          className="absolute top-0 left-0 rounded-lg"
+                          className="absolute top-0 left-0"
                           style={{
                             width: '800px',
                             height: pageWidths[pageNum - 1] && pageHeights[pageNum - 1]
@@ -1143,7 +1484,7 @@ function FieldEditorModal({
                   .map((field) => (
                   <div
                     key={field.id}
-                    className={`absolute pointer-events-auto ${getFieldColor(field.type)} border-2 ${field.required ? 'border-red-400' : 'border-white'} rounded group select-none transition-all ${isViewMode ? 'cursor-default opacity-40' : 'cursor-move opacity-35 hover:opacity-60'}`}
+                    className={`absolute ${draggingNewField ? 'pointer-events-none' : 'pointer-events-auto'} ${getFieldColor(field)} border-2 ${field.required ? 'border-red-400' : 'border-white'} rounded group select-none transition-all ${isViewMode ? 'cursor-default opacity-40' : 'cursor-move opacity-35 hover:opacity-60'}`}
                     style={{
                       left: `${field.x}%`,
                       top: `${field.y}%`,
@@ -1171,6 +1512,11 @@ function FieldEditorModal({
                       <span className="text-white text-xs font-semibold">
                         {field.label}
                       </span>
+                      {field.signerRole && (
+                        <span className="text-xs text-blue-300 mt-1">
+                          {field.signerRole}
+                        </span>
+                      )}
                       <span className={`text-xs mt-1 ${field.required ? 'text-red-300' : 'text-gray-300'}`}>
                         {field.required ? 'Required' : 'Optional'}
                       </span>
@@ -1218,7 +1564,7 @@ function FieldEditorModal({
                 {/* Drag preview - show field outline while dragging on this page only */}
                 {!isViewMode && draggingNewField && draggingNewField.pageNumber === pageNum && (
                   <div
-                    className={`absolute pointer-events-none ${getFieldColor(draggingNewField.type)} opacity-40 border-2 border-dashed border-white rounded`}
+                    className={`absolute pointer-events-none ${draggingNewField.signerIndex !== undefined && workflowSigners[draggingNewField.signerIndex] ? workflowSigners[draggingNewField.signerIndex].color : fieldTypes.find(ft => ft.type === draggingNewField.type)?.color || 'bg-gray-500'} opacity-40 border-2 border-dashed border-white rounded`}
                     style={{
                       left: `${draggingNewField.x}%`,
                       top: `${draggingNewField.y}%`,
@@ -1248,36 +1594,127 @@ function FieldEditorModal({
           {!isViewMode && (
             <div className="w-64 border-l border-gray-200 bg-gray-50 flex flex-col flex-shrink-0">
               <div className="p-4 border-b border-gray-200">
-                <h3 className="font-semibold text-gray-900">Field Types</h3>
-                <p className="text-xs text-gray-600 mt-1">Drag onto document</p>
-              </div>
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {fieldTypes.map(({ type, label, icon: Icon, color, example }) => (
-                  <div
-                    key={type}
-                    draggable
-                    onDragStart={(e) => {
-                      handleSidebarDragStart(e, type);
-                      setDraggingNewField({ type, x: 0, y: 0 });
-                    }}
-                    onDragEnd={() => setDraggingNewField(null)}
-                    className={`${color} text-white p-4 rounded-lg cursor-move shadow-md hover:shadow-lg transition-all flex flex-col gap-3`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon className="w-5 h-5 flex-shrink-0" />
-                      <div>
-                        <div className="font-medium">{label}</div>
-                        <div className="text-xs opacity-80">Drag to place</div>
-                      </div>
-                    </div>
-                    <div className="bg-white bg-opacity-20 rounded px-3 py-2 text-center border border-white border-opacity-30">
-                      <div className={`text-sm ${type === 'signature' ? 'font-serif italic' : type === 'initials' ? 'font-serif italic font-bold' : type === 'checkbox' ? 'text-xl' : ''}`}>
-                        {example}
-                      </div>
-                    </div>
+                <h3 className="font-semibold text-gray-900 mb-3">Field Types</h3>
+
+                {/* Signer Dropdown - Only show for multi-signer workflows */}
+                {workflowSigners.length > 0 && (
+                  <div className="mb-2">
+                    <label className="text-xs text-gray-600 block mb-1">Assigning fields for:</label>
+                    <select
+                      value={selectedSignerIndex}
+                      onChange={(e) => setSelectedSignerIndex(parseInt(e.target.value))}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    >
+                      {workflowSigners.map((signer, idx) => (
+                        <option key={idx} value={idx}>
+                          {signer.roleName}
+                        </option>
+                      ))}
+                    </select>
                   </div>
-                ))}
+                )}
+
+                <p className="text-xs text-gray-600 mt-2">
+                  {workflowSigners.length > 0
+                    ? 'Drag fields onto document'
+                    : 'Drag onto document'}
+                </p>
               </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                {/* Show only selected signer's fields for multi-signer, or all fields for single-signer */}
+                {workflowSigners.length > 0 ? (
+                  // Multi-signer: Show only selected signer's fields
+                  fieldTypes
+                    .filter((ft: any) => ft.signerIndex === selectedSignerIndex)
+                    .map(({ type, label, icon: Icon, color, example, signerRole }: any) => (
+                      <div
+                        key={`${selectedSignerIndex}-${type}`}
+                        draggable
+                        onDragStart={(e) => {
+                          handleSidebarDragStart(e, type, selectedSignerIndex, signerRole);
+                          setDraggingNewField({
+                            type,
+                            x: 0,
+                            y: 0,
+                            signerIndex: selectedSignerIndex,
+                            signerRole
+                          });
+                        }}
+                        onDragEnd={() => setDraggingNewField(null)}
+                        className={`
+                          relative
+                          border-2 border-dashed ${color.replace('bg-', 'border-')}
+                          bg-white hover:bg-gray-50
+                          p-3 rounded-lg
+                          cursor-grab active:cursor-grabbing
+                          shadow-sm hover:shadow-md
+                          transition-all duration-200
+                          flex items-center gap-3
+                        `}
+                      >
+                        <Icon className={`w-5 h-5 flex-shrink-0 ${color.replace('bg-', 'text-')}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm text-gray-900">{label}</div>
+                          <div className="text-xs text-gray-500">Drag to place</div>
+                        </div>
+                      </div>
+                    ))
+                ) : (
+                  // Single-signer: Show generic fields
+                  fieldTypes.map(({ type, label, icon: Icon, color, example }: any) => (
+                    <div
+                      key={type}
+                      draggable
+                      onDragStart={(e) => {
+                        handleSidebarDragStart(e, type);
+                        setDraggingNewField({ type, x: 0, y: 0 });
+                      }}
+                      onDragEnd={() => setDraggingNewField(null)}
+                      className={`
+                        relative
+                        border-2 border-dashed ${color.replace('bg-', 'border-')}
+                        bg-white hover:bg-gray-50
+                        p-4 rounded-lg
+                        cursor-grab active:cursor-grabbing
+                        shadow-sm hover:shadow-md
+                        transition-all duration-200
+                        flex flex-col gap-3
+                      `}
+                    >
+                      <div className="flex items-center gap-3">
+                        <Icon className={`w-5 h-5 flex-shrink-0 ${color.replace('bg-', 'text-')}`} />
+                        <div>
+                          <div className="font-medium text-gray-900">{label}</div>
+                          <div className="text-xs text-gray-500">Drag to place</div>
+                        </div>
+                      </div>
+                      <div className="bg-gray-50 rounded px-3 py-2 text-center border border-gray-200">
+                        <div className={`text-sm text-gray-600 ${type === 'signature' ? 'font-serif italic' : type === 'initials' ? 'font-serif italic font-bold' : type === 'checkbox' ? 'text-xl' : ''}`}>
+                          {example}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Validation Warning - only show for multi-signer workflows */}
+              {workflowSigners.length > 0 && (
+                <div className="p-4 border-t border-gray-200 bg-yellow-50">
+                  <div className="text-xs text-yellow-800">
+                    <div className="font-semibold mb-1">⚠️ Signer Field Check</div>
+                    {workflowSigners.map((signer, idx) => {
+                      const signerFieldCount = fields.filter(f => f.signerIndex === idx).length;
+                      return (
+                        <div key={idx} className={signerFieldCount === 0 ? 'text-red-600 font-medium' : 'text-green-600'}>
+                          {signer.roleName}: {signerFieldCount} field{signerFieldCount !== 1 ? 's' : ''}
+                          {signerFieldCount === 0 && ' ⚠️'}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

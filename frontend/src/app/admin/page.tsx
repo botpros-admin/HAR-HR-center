@@ -1,18 +1,101 @@
 'use client';
 
-import { FileText, Users, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { FileText, Users, Clock, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import { useState, useEffect } from 'react';
+import { api } from '@/lib/api';
+
+interface DashboardStats {
+  totalTemplates: number;
+  activeTemplates: number;
+  pendingSignatures: number;
+  completedToday: number;
+  overdueAssignments: number;
+  totalEmployees: number;
+}
+
+interface Activity {
+  id: number;
+  employeeName: string | null;
+  action: string;
+  status: string;
+  message: string;
+  type: 'success' | 'error' | 'info';
+  timestamp: string;
+}
+
+// Helper function to format ISO timestamp into relative time
+function formatTimestamp(timestamp: string): string {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffMins < 1) return 'Just now';
+  if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? 's' : ''} ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+  if (diffDays < 7) return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+
+  return date.toLocaleDateString();
+}
 
 export default function AdminDashboard() {
-  // TODO: Fetch real stats from API
-  const stats = {
-    totalTemplates: 12,
-    activeTemplates: 10,
-    pendingSignatures: 23,
-    completedToday: 5,
-    overdueAssignments: 3,
-    totalEmployees: 156
-  };
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchDashboardData() {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Fetch stats and recent activity in parallel
+        const [statsResponse, activitiesResponse] = await Promise.all([
+          api.getDashboardStats(),
+          api.getRecentActivity(10)
+        ]);
+
+        setStats(statsResponse.stats);
+        setActivities(activitiesResponse.activities);
+      } catch (err) {
+        console.error('Error fetching dashboard data:', err);
+        setError((err as Error).message || 'Failed to load dashboard data');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchDashboardData();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Loader2 className="w-8 h-8 text-hartzell-blue animate-spin" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+        <h3 className="text-lg font-semibold text-red-900 mb-2">Error Loading Dashboard</h3>
+        <p className="text-red-700">{error}</p>
+      </div>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
+        <p className="text-yellow-800">No dashboard data available</p>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -106,32 +189,21 @@ export default function AdminDashboard() {
         <h2 className="text-lg font-semibold text-gray-900 mb-4">
           Recent Activity
         </h2>
-        <div className="space-y-4">
-          <ActivityItem
-            action="Document Signed"
-            description="Kevin Clark signed Drug Test Consent"
-            time="2 minutes ago"
-            type="success"
-          />
-          <ActivityItem
-            action="Assignment Created"
-            description="W-4 Tax Form assigned to 5 new employees"
-            time="1 hour ago"
-            type="info"
-          />
-          <ActivityItem
-            action="Template Uploaded"
-            description="Updated Employee Handbook v2025.1"
-            time="3 hours ago"
-            type="info"
-          />
-          <ActivityItem
-            action="Reminder Sent"
-            description="Sent reminder to 3 employees with overdue documents"
-            time="5 hours ago"
-            type="warning"
-          />
-        </div>
+        {activities.length === 0 ? (
+          <p className="text-sm text-gray-500">No recent activity</p>
+        ) : (
+          <div className="space-y-4">
+            {activities.map((activity) => (
+              <ActivityItem
+                key={activity.id}
+                action={activity.action.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
+                description={activity.message}
+                time={formatTimestamp(activity.timestamp)}
+                type={activity.type}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -214,12 +286,12 @@ function ActivityItem({
   action: string;
   description: string;
   time: string;
-  type: 'success' | 'info' | 'warning';
+  type: 'success' | 'info' | 'error';
 }) {
   const colors = {
     success: 'bg-green-100 text-green-600',
     info: 'bg-blue-100 text-blue-600',
-    warning: 'bg-yellow-100 text-yellow-600',
+    error: 'bg-red-100 text-red-600',
   };
 
   return (

@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { BitrixClient } from '../lib/bitrix';
-import { OpenSignClient } from '../lib/opensign';
 import { verifySession } from '../lib/auth';
 import { maskSalary } from '../lib/pii';
 
@@ -223,7 +222,6 @@ employeeRoutes.get('/documents', async (c) => {
         dt.file_name,
         dt.requires_signature,
         dt.field_positions,
-        sr.opensign_url,
         sr.status as signature_status
       FROM document_assignments da
       JOIN document_templates dt ON da.template_id = dt.id
@@ -252,7 +250,6 @@ employeeRoutes.get('/documents', async (c) => {
       priority: doc.priority,
       requiresSignature: doc.requires_signature === 1,
       signatureStatus: doc.signature_status,
-      signatureUrl: doc.opensign_url,
       signatureRequestId: doc.signature_request_id,
       templateUrl: doc.template_url,
       fileName: doc.file_name,
@@ -268,109 +265,8 @@ employeeRoutes.get('/documents', async (c) => {
       isExpired: doc.status === 'expired'
     }));
 
-    // Background: Auto-retry signature request creation for stuck documents
-    // This runs async and doesn't block the response
-    c.executionCtx.waitUntil(
-      (async () => {
-        for (const doc of result.results) {
-          // If document requires signature but has no signature request ID and status is 'assigned'
-          if (doc.requires_signature === 1 && !doc.signature_request_id && doc.status === 'assigned') {
-            try {
-              console.log(`[AUTO-RETRY] Creating signature request for assignment ${doc.id}`);
-
-              // Get employee details
-              const employee = await env.DB.prepare(`
-                SELECT bitrix_id, full_name, email
-                FROM employee_cache
-                WHERE bitrix_id = ?
-              `).bind(session.bitrixId).first();
-
-              if (!employee) {
-                console.error(`[AUTO-RETRY] Employee ${session.bitrixId} not found in cache`);
-                continue;
-              }
-
-              // Get PDF from R2
-              const r2Object = await env.DOCUMENTS.get(doc.template_url);
-              if (!r2Object) {
-                console.error(`[AUTO-RETRY] Template file not found: ${doc.template_url}`);
-                continue;
-              }
-
-              const pdfBuffer = await r2Object.arrayBuffer();
-
-              // Parse field positions
-              let fieldPositions = null;
-              if (doc.field_positions) {
-                try {
-                  fieldPositions = JSON.parse(doc.field_positions);
-                } catch (e) {
-                  console.warn('[AUTO-RETRY] Failed to parse field positions:', e);
-                }
-              }
-
-              // Create signature request via OpenSign
-              const opensign = new OpenSignClient(env);
-              const signatureRequest = await opensign.createSignatureRequestFromPDF({
-                pdfBuffer,
-                fileName: doc.file_name,
-                documentTitle: doc.title,
-                signerEmail: employee.email as string,
-                signerName: employee.full_name as string,
-                fieldPositions,
-                metadata: {
-                  employeeId: employee.bitrix_id,
-                  templateId: doc.template_id,
-                  assignmentId: doc.id
-                }
-              });
-
-              console.log(`[AUTO-RETRY] Created OpenSign document ${signatureRequest.id}, now storing in database...`);
-
-              // Store signature request in database with INSERT OR REPLACE to handle duplicates
-              const insertResult = await env.DB.prepare(`
-                INSERT OR REPLACE INTO signature_requests (
-                  id, employee_id, bitrix_id, document_type, document_title, opensign_url, status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 'pending', datetime('now'))
-              `).bind(
-                signatureRequest.id,
-                doc.bitrix_id,  // employee_id from document assignment
-                doc.bitrix_id,  // bitrix_id
-                doc.category || 'document',  // document_type
-                doc.title,
-                signatureRequest.signUrl
-              ).run();
-
-              console.log(`[AUTO-RETRY] Insert result:`, insertResult.success, insertResult.meta);
-
-              // Update assignment with signature request ID and change status to 'sent'
-              const updateResult = await env.DB.prepare(`
-                UPDATE document_assignments
-                SET signature_request_id = ?,
-                    status = 'sent',
-                    notes = NULL
-                WHERE id = ?
-              `).bind(signatureRequest.id, doc.id).run();
-
-              console.log(`[AUTO-RETRY] Update result:`, updateResult.success, updateResult.meta);
-              console.log(`[AUTO-RETRY] Successfully created signature request for assignment ${doc.id}`);
-
-            } catch (error) {
-              console.error(`[AUTO-RETRY] Failed to create signature request for assignment ${doc.id}:`, error);
-              // Update notes field with error for debugging
-              await env.DB.prepare(`
-                UPDATE document_assignments
-                SET notes = ?
-                WHERE id = ?
-              `).bind(
-                `Auto-retry failed: ${(error as Error).message}`,
-                doc.id
-              ).run();
-            }
-          }
-        }
-      })()
-    );
+    // Note: Native signature system handles signatures via /api/signatures/sign-native endpoint
+    // No background processing needed - employees sign directly through the portal
 
     return c.json(documents);
 
@@ -551,24 +447,48 @@ employeeRoutes.put('/profile', async (c) => {
     position: 'ufCrm6WorkPosition',
     department: 'ufCrm6Subsidiary',
     address: 'ufCrm6Address',
+    street: 'ufCrm6Address', // Map street to address for bulk updates
     skills: 'ufCrm6Skills',
     certifications: 'ufCrm6Certifications',
     softwareExperience: 'ufCrm6SoftwareExperience',
   };
 
-  const bitrixField = fieldMapping[field];
-  if (!bitrixField) {
-    return c.json({ error: 'Invalid field' }, 400);
-  }
-
   // Prepare update data
   const updateData: Record<string, any> = {};
 
-  // Handle special cases for multi-value fields
-  if (field === 'email' || field === 'phone') {
-    updateData[bitrixField] = [value];
+  // Handle bulk updates (when field === 'bulk')
+  if (field === 'bulk') {
+    // Loop through all properties in body except 'field'
+    for (const [key, val] of Object.entries(body)) {
+      if (key === 'field') continue; // Skip the 'field' property itself
+
+      const bitrixField = fieldMapping[key];
+      if (bitrixField) {
+        // Handle special cases for multi-value fields
+        if (key === 'email' || key === 'phone') {
+          updateData[bitrixField] = [val];
+        } else {
+          updateData[bitrixField] = val;
+        }
+      }
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return c.json({ error: 'No valid fields to update' }, 400);
+    }
   } else {
-    updateData[bitrixField] = value;
+    // Single field update
+    const bitrixField = fieldMapping[field];
+    if (!bitrixField) {
+      return c.json({ error: 'Invalid field' }, 400);
+    }
+
+    // Handle special cases for multi-value fields
+    if (field === 'email' || field === 'phone') {
+      updateData[bitrixField] = [value];
+    } else {
+      updateData[bitrixField] = value;
+    }
   }
 
   // Update in Bitrix24
@@ -661,4 +581,408 @@ employeeRoutes.put('/profile', async (c) => {
     howDidYouHear: additionalInfo.howDidYouHear || null,
     // DO NOT expose: felonyConviction, felonyExplanation, backgroundCheckConsent
   });
+});
+
+// Get employee signature
+employeeRoutes.get('/profile/signature', async (c) => {
+  const env = c.env;
+
+  // Get session
+  let sessionId = c.req.header('Authorization')?.replace('Bearer ', '');
+  if (!sessionId) {
+    sessionId = c.req.header('Cookie')
+      ?.split('; ')
+      .find(row => row.startsWith('session='))
+      ?.split('=')[1];
+  }
+
+  if (!sessionId) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const session = await verifySession(env, sessionId);
+  if (!session) {
+    return c.json({ error: 'Invalid session' }, 401);
+  }
+
+  // Get signature from R2
+  const signatureKey = `signatures/employee-${session.bitrixId}.png`;
+  const object = await env.ASSETS.get(signatureKey);
+
+  if (!object) {
+    return c.json({ error: 'Signature not found' }, 404);
+  }
+
+  const headers = new Headers();
+  headers.set('Content-Type', 'image/png');
+  headers.set('Cache-Control', 'public, max-age=3600');
+
+  return new Response(object.body, { headers });
+});
+
+// Save employee signature
+employeeRoutes.post('/profile/signature', async (c) => {
+  const env = c.env;
+
+  // Get session
+  let sessionId = c.req.header('Authorization')?.replace('Bearer ', '');
+  if (!sessionId) {
+    sessionId = c.req.header('Cookie')
+      ?.split('; ')
+      .find(row => row.startsWith('session='))
+      ?.split('=')[1];
+  }
+
+  if (!sessionId) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const session = await verifySession(env, sessionId);
+  if (!session) {
+    return c.json({ error: 'Invalid session' }, 401);
+  }
+
+  try {
+    // Parse multipart form data
+    const formData = await c.req.formData();
+    const signatureFile = formData.get('signature') as File;
+
+    if (!signatureFile) {
+      return c.json({ error: 'No signature file provided' }, 400);
+    }
+
+    // Convert file to buffer
+    const buffer = await signatureFile.arrayBuffer();
+
+    // Save to R2
+    const signatureKey = `signatures/employee-${session.bitrixId}.png`;
+    await env.ASSETS.put(signatureKey, buffer, {
+      httpMetadata: {
+        contentType: 'image/png',
+      },
+    });
+
+    return c.json({ success: true, message: 'Signature saved successfully' });
+  } catch (error) {
+    console.error('Error saving signature:', error);
+    return c.json({ error: 'Failed to save signature' }, 500);
+  }
+});
+
+// Delete employee signature
+employeeRoutes.delete('/profile/signature', async (c) => {
+  const env = c.env;
+
+  // Get session
+  let sessionId = c.req.header('Authorization')?.replace('Bearer ', '');
+  if (!sessionId) {
+    sessionId = c.req.header('Cookie')
+      ?.split('; ')
+      .find(row => row.startsWith('session='))
+      ?.split('=')[1];
+  }
+
+  if (!sessionId) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const session = await verifySession(env, sessionId);
+  if (!session) {
+    return c.json({ error: 'Invalid session' }, 401);
+  }
+
+  // Delete from R2
+  const signatureKey = `signatures/employee-${session.bitrixId}.png`;
+  await env.ASSETS.delete(signatureKey);
+
+  return c.json({ success: true, message: 'Signature deleted successfully' });
+});
+
+// Get employee initials
+employeeRoutes.get('/profile/initials', async (c) => {
+  const env = c.env;
+
+  // Get session
+  let sessionId = c.req.header('Authorization')?.replace('Bearer ', '');
+  if (!sessionId) {
+    sessionId = c.req.header('Cookie')
+      ?.split('; ')
+      .find(row => row.startsWith('session='))
+      ?.split('=')[1];
+  }
+
+  if (!sessionId) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const session = await verifySession(env, sessionId);
+  if (!session) {
+    return c.json({ error: 'Invalid session' }, 401);
+  }
+
+  // Get initials from R2
+  const initialsKey = `signatures/employee-${session.bitrixId}-initials.png`;
+  const object = await env.ASSETS.get(initialsKey);
+
+  if (!object) {
+    return c.json({ error: 'Initials not found' }, 404);
+  }
+
+  const headers = new Headers();
+  headers.set('Content-Type', 'image/png');
+  headers.set('Cache-Control', 'public, max-age=3600');
+
+  return new Response(object.body, { headers });
+});
+
+// Save employee initials
+employeeRoutes.post('/profile/initials', async (c) => {
+  const env = c.env;
+
+  // Get session
+  let sessionId = c.req.header('Authorization')?.replace('Bearer ', '');
+  if (!sessionId) {
+    sessionId = c.req.header('Cookie')
+      ?.split('; ')
+      .find(row => row.startsWith('session='))
+      ?.split('=')[1];
+  }
+
+  if (!sessionId) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const session = await verifySession(env, sessionId);
+  if (!session) {
+    return c.json({ error: 'Invalid session' }, 401);
+  }
+
+  try {
+    // Parse multipart form data
+    const formData = await c.req.formData();
+    const initialsFile = formData.get('signature') as File; // Keep as 'signature' for consistency with frontend
+
+    if (!initialsFile) {
+      return c.json({ error: 'No initials file provided' }, 400);
+    }
+
+    // Convert file to buffer
+    const buffer = await initialsFile.arrayBuffer();
+
+    // Save to R2
+    const initialsKey = `signatures/employee-${session.bitrixId}-initials.png`;
+    await env.ASSETS.put(initialsKey, buffer, {
+      httpMetadata: {
+        contentType: 'image/png',
+      },
+    });
+
+    return c.json({ success: true, message: 'Initials saved successfully' });
+  } catch (error) {
+    console.error('Error saving initials:', error);
+    return c.json({ error: 'Failed to save initials' }, 500);
+  }
+});
+
+// Delete employee initials
+employeeRoutes.delete('/profile/initials', async (c) => {
+  const env = c.env;
+
+  // Get session
+  let sessionId = c.req.header('Authorization')?.replace('Bearer ', '');
+  if (!sessionId) {
+    sessionId = c.req.header('Cookie')
+      ?.split('; ')
+      .find(row => row.startsWith('session='))
+      ?.split('=')[1];
+  }
+
+  if (!sessionId) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const session = await verifySession(env, sessionId);
+  if (!session) {
+    return c.json({ error: 'Invalid session' }, 401);
+  }
+
+  // Delete from R2
+  const initialsKey = `signatures/employee-${session.bitrixId}-initials.png`;
+  await env.ASSETS.delete(initialsKey);
+
+  return c.json({ success: true, message: 'Initials deleted successfully' });
+});
+
+// ========== EMAIL PREFERENCES ENDPOINTS ==========
+
+// Get employee email preferences
+employeeRoutes.get('/email-preferences', async (c) => {
+  const env = c.env;
+
+  // Get session
+  let sessionId = c.req.header('Authorization')?.replace('Bearer ', '');
+  if (!sessionId) {
+    sessionId = c.req.header('Cookie')
+      ?.split('; ')
+      .find(row => row.startsWith('session='))
+      ?.split('=')[1];
+  }
+
+  if (!sessionId) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const session = await verifySession(env, sessionId);
+  if (!session) {
+    return c.json({ error: 'Invalid session' }, 401);
+  }
+
+  try {
+    const result = await env.DB.prepare(`
+      SELECT * FROM email_preferences WHERE employee_id = ?
+    `).bind(session.employee_id).first();
+
+    if (!result) {
+      // Return default preferences if not configured yet
+      return c.json({
+        preferences: {
+          emailEnabled: true,
+          notifyAssignments: true,
+          notifyReminders: true,
+          notifyOverdue: true,
+          notifyConfirmations: true,
+          alternativeEmail: null,
+        }
+      });
+    }
+
+    return c.json({
+      preferences: {
+        emailEnabled: result.email_enabled === 1,
+        notifyAssignments: result.notify_assignments === 1,
+        notifyReminders: result.notify_reminders === 1,
+        notifyOverdue: result.notify_overdue === 1,
+        notifyConfirmations: result.notify_confirmations === 1,
+        alternativeEmail: result.alternative_email,
+        updatedAt: result.updated_at,
+      }
+    });
+
+  } catch (error) {
+    console.error('[Employee] Error fetching email preferences:', error);
+    return c.json({ error: 'Failed to fetch email preferences', details: (error as Error).message }, 500);
+  }
+});
+
+// Update employee email preferences
+employeeRoutes.put('/email-preferences', async (c) => {
+  const env = c.env;
+
+  // Get session
+  let sessionId = c.req.header('Authorization')?.replace('Bearer ', '');
+  if (!sessionId) {
+    sessionId = c.req.header('Cookie')
+      ?.split('; ')
+      .find(row => row.startsWith('session='))
+      ?.split('=')[1];
+  }
+
+  if (!sessionId) {
+    return c.json({ error: 'Unauthorized' }, 401);
+  }
+
+  const session = await verifySession(env, sessionId);
+  if (!session) {
+    return c.json({ error: 'Invalid session' }, 401);
+  }
+
+  try {
+    const body = await c.req.json();
+    console.log('[Employee] Update email preferences:', JSON.stringify(body, null, 2));
+
+    // Validate input
+    const { emailEnabled, notifyAssignments, notifyReminders, notifyOverdue, notifyConfirmations, alternativeEmail } = body;
+
+    // Update preferences (INSERT or UPDATE)
+    await env.DB.prepare(`
+      INSERT INTO email_preferences (
+        employee_id, email_enabled, notify_assignments, notify_reminders,
+        notify_overdue, notify_confirmations, alternative_email, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(employee_id) DO UPDATE SET
+        email_enabled = excluded.email_enabled,
+        notify_assignments = excluded.notify_assignments,
+        notify_reminders = excluded.notify_reminders,
+        notify_overdue = excluded.notify_overdue,
+        notify_confirmations = excluded.notify_confirmations,
+        alternative_email = excluded.alternative_email,
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(
+      session.employee_id,
+      emailEnabled ? 1 : 0,
+      notifyAssignments ? 1 : 0,
+      notifyReminders ? 1 : 0,
+      notifyOverdue ? 1 : 0,
+      notifyConfirmations ? 1 : 0,
+      alternativeEmail || null
+    ).run();
+
+    // Log the change in audit log
+    await env.DB.prepare(`
+      INSERT INTO audit_logs (
+        employee_id, bitrix_id, action, status, metadata, timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).bind(
+      session.employee_id,
+      session.bitrixId,
+      'email_preferences_updated',
+      'success',
+      JSON.stringify({
+        emailEnabled,
+        timestamp: new Date().toISOString()
+      }),
+      new Date().toISOString()
+    ).run();
+
+    console.log(`[Employee] Email preferences updated for employee ${session.employee_id}`);
+
+    return c.json({
+      success: true,
+      message: 'Email preferences updated successfully',
+      preferences: {
+        emailEnabled,
+        notifyAssignments,
+        notifyReminders,
+        notifyOverdue,
+        notifyConfirmations,
+        alternativeEmail
+      }
+    });
+
+  } catch (error) {
+    console.error('[Employee] Error updating email preferences:', error);
+
+    // Log the failure
+    try {
+      await env.DB.prepare(`
+        INSERT INTO audit_logs (
+          employee_id, bitrix_id, action, status, metadata, timestamp
+        ) VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(
+        session.employee_id,
+        session.bitrixId,
+        'email_preferences_updated',
+        'failure',
+        JSON.stringify({
+          error: (error as Error).message,
+          timestamp: new Date().toISOString()
+        }),
+        new Date().toISOString()
+      ).run();
+    } catch (auditError) {
+      console.error('[Employee] Failed to log audit entry:', auditError);
+    }
+
+    return c.json({ error: 'Failed to update email preferences', details: (error as Error).message }, 500);
+  }
 });

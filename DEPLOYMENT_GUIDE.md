@@ -153,35 +153,38 @@ curl -I https://hartzell.work/api/auth/session
 HTTP/2 401 (or 200 if you have a valid session)
 ```
 
-### Frontend Deployment (Pages)
+### Frontend Deployment (Pages) - MANDATORY METHOD
+
+**⚠️ CRITICAL: ONLY USE THIS DEPLOYMENT METHOD ⚠️**
+
+**DO NOT:**
+- ❌ Use `wrangler pages deploy` directly
+- ❌ Deploy to any branch other than `main`
+- ❌ Skip the deploy script
 
 **Prerequisites:**
 - Located in `/frontend` directory
 - Node.js 20+ installed
 - `npm install` completed
 
-**Build Command:**
+**ONLY CORRECT DEPLOYMENT COMMAND:**
 ```bash
 cd /mnt/c/Users/Agent/Desktop/HR\ Center/frontend
-export NODE_OPTIONS="--max-old-space-size=4096"
-npm run build
+npm run deploy
 ```
 
-**What Happens:**
-1. Next.js builds static export
-2. Output written to `out/` directory
-3. All pages pre-rendered
-4. Static assets optimized
+**Why This Is The ONLY Method:**
+- ✅ Deploys to `main` branch (the ONLY branch that serves app.hartzell.work)
+- ✅ Cleans all caches automatically (prevents stale builds)
+- ✅ Single command deployment
+- ✅ Always deploys fresh build
+- ✅ Consistent process every time
 
-**Deploy Command:**
-```bash
-npx wrangler pages deploy out --project-name=hartzell-hr-frontend --commit-dirty=true
-```
-
-**What Happens:**
-1. `out/` directory uploaded to Cloudflare Pages
-2. New deployment created
-3. Custom domain `app.hartzell.work` automatically updated
+**What Happens Automatically:**
+1. Cleans all build caches (`.next`, `out`, `node_modules/.cache`)
+2. Builds Next.js static export to `./out` directory
+3. Deploys to Cloudflare Pages (`hartzell-hr-frontend` project)
+4. Updates custom domain `app.hartzell.work` automatically
 
 **Verify Deployment:**
 ```bash
@@ -450,8 +453,7 @@ wrangler pages deployment list --project-name=hartzell-hr-frontend
 # Redeploy specific commit
 git checkout [COMMIT_HASH]
 cd frontend
-npm run build
-npx wrangler pages deploy out --project-name=hartzell-hr-frontend
+npm run deploy
 git checkout main
 ```
 
@@ -482,8 +484,7 @@ git checkout main
 3. **Rebuild frontend if needed:**
    ```bash
    cd frontend
-   npm run build
-   npx wrangler pages deploy out --project-name=hartzell-hr-frontend
+   npm run deploy
    ```
 
 ### Issue: "Too Many Attempts" / Rate Limited
@@ -654,7 +655,6 @@ Before announcing to employees:
 **Documentation:**
 - `README.md` - System overview
 - `SPECIFICATION.md` - Complete technical specification
-- `OPENSIGN_INTEGRATION.md` - E-signature guide (NOT IMPLEMENTED)
 - `cloudflare-app/README.md` - Backend architecture
 - `frontend/README.md` - Frontend architecture
 

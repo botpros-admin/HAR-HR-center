@@ -1,9 +1,9 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api';
-import { LogOut, FileText, Users, LayoutDashboard, ClipboardList, User, Menu, X } from 'lucide-react';
+import { LogOut, FileText, Users, LayoutDashboard, ClipboardList, User, Menu, X, Settings } from 'lucide-react';
 import Link from 'next/link';
 import { getInitials } from '@/lib/utils';
 import { useEffect, useState } from 'react';
@@ -153,6 +153,9 @@ export default function AdminLayout({
               <MobileNavLink href="/admin/employees" icon={Users} onClick={() => setMobileMenuOpen(false)}>
                 Employees
               </MobileNavLink>
+              <MobileNavLink href="/admin/settings" icon={Settings} onClick={() => setMobileMenuOpen(false)}>
+                Settings
+              </MobileNavLink>
 
               {/* Divider */}
               <div className="border-t border-gray-200 my-2"></div>
@@ -192,6 +195,9 @@ export default function AdminLayout({
             <NavLink href="/admin/employees" icon={Users}>
               Employees
             </NavLink>
+            <NavLink href="/admin/settings" icon={Settings}>
+              Settings
+            </NavLink>
           </div>
         </div>
       </nav>
@@ -213,10 +219,25 @@ function NavLink({
   icon: any;
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+
+  // Normalize paths by removing trailing slashes for comparison
+  const normalizedPathname = pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
+  const normalizedHref = href.endsWith('/') && href !== '/' ? href.slice(0, -1) : href;
+
+  // Match exact path OR sub-paths (but not /admin for everything)
+  const isActive =
+    normalizedPathname === normalizedHref ||
+    (normalizedHref !== '/admin' && normalizedPathname.startsWith(normalizedHref + '/'));
+
   return (
     <Link
       href={href}
-      className="flex items-center gap-2 px-3 py-4 text-sm font-medium text-gray-600 hover:text-hartzell-blue border-b-2 border-transparent hover:border-hartzell-blue transition-colors whitespace-nowrap"
+      className={`flex items-center gap-2 px-3 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+        isActive
+          ? 'text-hartzell-blue border-hartzell-blue bg-blue-50'
+          : 'text-gray-600 hover:text-hartzell-blue border-transparent hover:border-hartzell-blue hover:bg-blue-50'
+      }`}
     >
       <Icon className="w-4 h-4 flex-shrink-0" />
       <span>{children}</span>
@@ -235,11 +256,26 @@ function MobileNavLink({
   onClick: () => void;
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+
+  // Normalize paths by removing trailing slashes for comparison
+  const normalizedPathname = pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
+  const normalizedHref = href.endsWith('/') && href !== '/' ? href.slice(0, -1) : href;
+
+  // Match exact path OR sub-paths (but not /admin for everything)
+  const isActive =
+    normalizedPathname === normalizedHref ||
+    (normalizedHref !== '/admin' && normalizedPathname.startsWith(normalizedHref + '/'));
+
   return (
     <Link
       href={href}
       onClick={onClick}
-      className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+        isActive
+          ? 'bg-hartzell-blue text-white'
+          : 'text-gray-700 hover:bg-gray-100'
+      }`}
     >
       <Icon className="w-5 h-5 flex-shrink-0" />
       <span className="font-medium">{children}</span>

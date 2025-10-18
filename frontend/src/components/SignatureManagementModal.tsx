@@ -1,0 +1,350 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { X, PenTool, Save, Trash2 } from 'lucide-react';
+import { SignatureCanvas } from './SignatureCanvas';
+import { SecureSignatureFrame } from './SecureSignatureFrame';
+
+interface SignatureManagementModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  type: 'signature' | 'initials';
+  onSave: (dataUrl: string) => Promise<void>;
+}
+
+export function SignatureManagementModal({
+  isOpen,
+  onClose,
+  type,
+  onSave,
+}: SignatureManagementModalProps) {
+  const [tempSignature, setTempSignature] = useState<string | null>(null);
+  const [signatureMethod, setSignatureMethod] = useState<'draw' | 'type'>('draw');
+  const [typedName, setTypedName] = useState<string>('');
+  const [isTouchDevice, setIsTouchDevice] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [currentSerialNumber, setCurrentSerialNumber] = useState<string>('');
+
+  // Detect if device supports touch
+  useEffect(() => {
+    const hasTouchScreen =
+      'ontouchstart' in window ||
+      navigator.maxTouchPoints > 0 ||
+      window.matchMedia('(pointer: coarse)').matches;
+
+    setIsTouchDevice(hasTouchScreen);
+  }, []);
+
+  // Generate unique serial number when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      const timestamp = Date.now();
+      const serialNumber = `HSC-${timestamp.toString(36).toUpperCase()}-PROFILE`;
+      setCurrentSerialNumber(serialNumber);
+
+      // Set default method based on device type
+      setSignatureMethod(isTouchDevice ? 'draw' : 'type');
+    }
+  }, [isOpen, isTouchDevice]);
+
+  // Generate signature from typed name with dynamic sizing
+  const generateTypedSignature = (name: string, isInitials: boolean = false): string => {
+    const canvas = document.createElement('canvas');
+    canvas.width = isInitials ? 300 : 500;
+    canvas.height = isInitials ? 150 : 200;
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) return '';
+
+    // Transparent background (no white fill)
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Dynamic font sizing to fit text
+    let fontSize = isInitials ? 48 : 64;
+    const minFontSize = isInitials ? 24 : 32;
+    const maxWidth = canvas.width * 0.9; // 90% of canvas width for padding
+
+    ctx.fillStyle = '#000000';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Find the right font size that fits
+    while (fontSize > minFontSize) {
+      ctx.font = `${fontSize}px "Dancing Script", cursive`;
+      const metrics = ctx.measureText(name);
+      if (metrics.width <= maxWidth) {
+        break; // Text fits!
+      }
+      fontSize -= 2; // Reduce font size and try again
+    }
+
+    // Draw the name with the calculated font size
+    ctx.font = `${fontSize}px "Dancing Script", cursive`;
+    ctx.fillText(name, canvas.width / 2, canvas.height / 2);
+
+    return canvas.toDataURL('image/png');
+  };
+
+  // Handle typed name change
+  const handleTypedNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const name = e.target.value;
+    setTypedName(name);
+
+    if (name.trim()) {
+      const isInitials = type === 'initials';
+      const signatureDataUrl = generateTypedSignature(name, isInitials);
+      setTempSignature(signatureDataUrl);
+    } else {
+      setTempSignature(null);
+    }
+  };
+
+  const handleSaveSignature = (dataUrl: string) => {
+    setTempSignature(dataUrl);
+  };
+
+  const handleConfirmSignature = async () => {
+    if (!tempSignature) return;
+
+    setIsSaving(true);
+    try {
+      await onSave(tempSignature);
+      onClose();
+      setTempSignature(null);
+      setTypedName('');
+    } catch (error) {
+      console.error('Error saving signature:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleClear = () => {
+    if (signatureMethod === 'draw') {
+      const canvas = document.querySelector('.signature-canvas-enterprise canvas') as any;
+      if (canvas?.clearSignature) canvas.clearSignature();
+    } else {
+      setTypedName('');
+    }
+    setTempSignature(null);
+  };
+
+  if (!isOpen) return null;
+
+  const isInitials = type === 'initials';
+  const width = isInitials ? 300 : 400;
+  const height = isInitials ? 150 : 200;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 md:p-4" style={{ background: 'rgba(0,0,0,0.6)', touchAction: 'none' }}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col" style={{ touchAction: 'auto' }}>
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 md:px-6 py-3 md:py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center">
+                  <PenTool className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-base md:text-lg font-bold">
+                    {isInitials ? 'Set Your Initials' : 'Set Your Signature'}
+                  </h3>
+                  <p className="text-xs opacity-90">This will be used for document signing</p>
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-white/80 hover:text-white p-1 ml-2"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Method Selector Tabs */}
+        <div className="px-4 md:px-6 pt-4 bg-gray-50">
+          <div className="flex gap-2 bg-gray-200 p-1 rounded-lg">
+            <button
+              onClick={() => {
+                setSignatureMethod('draw');
+                setTempSignature(null);
+                setTypedName('');
+              }}
+              className={`flex-1 py-2 px-4 rounded-md font-medium text-sm transition-all ${
+                signatureMethod === 'draw'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <PenTool className="w-4 h-4" />
+                <span>Pen</span>
+              </div>
+            </button>
+            <button
+              onClick={() => {
+                setSignatureMethod('type');
+                setTempSignature(null);
+                const canvas = document.querySelector('.signature-canvas-enterprise canvas') as any;
+                if (canvas?.clearSignature) canvas.clearSignature();
+              }}
+              className={`flex-1 py-2 px-4 rounded-md font-medium text-sm transition-all ${
+                signatureMethod === 'type'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                </svg>
+                <span>Type</span>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        {/* Content Area - Fixed Height to Prevent Jumping */}
+        <div className="p-4 md:p-6 bg-gray-50" style={{ height: '420px', overflow: 'hidden' }}>
+          <div className="h-full flex flex-col">
+            {signatureMethod === 'draw' ? (
+              <>
+                <div className="mb-3">
+                  <p className="text-xs text-gray-600 text-center">
+                    {isInitials
+                      ? (isTouchDevice ? 'Draw your initials with your finger or stylus' : 'Draw your initials using mouse or trackpad')
+                      : (isTouchDevice ? 'Draw your signature with your finger or stylus' : 'Draw your signature using mouse or trackpad')}
+                  </p>
+                </div>
+
+                {/* Signature box container */}
+                <div className="flex items-center justify-center w-full">
+                  <div
+                    style={{
+                      width: `${width}px`,
+                      maxWidth: '100%',
+                      height,
+                      position: 'relative',
+                      margin: '0 auto'
+                    }}
+                  >
+                    <SecureSignatureFrame
+                      width={width}
+                      height={height}
+                      serialNumber={currentSerialNumber}
+                    />
+
+                    <div className="absolute inset-0 signature-canvas-enterprise">
+                      <SignatureCanvas
+                        onSave={handleSaveSignature}
+                        onClear={() => setTempSignature(null)}
+                        width={width}
+                        height={height}
+                        showButtons={false}
+                        autoSaveOnDraw={true}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mb-3 flex-shrink-0">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {isInitials ? 'Type your initials' : 'Type your full name'}
+                  </label>
+                  <input
+                    type="text"
+                    value={typedName}
+                    onChange={handleTypedNameChange}
+                    placeholder={isInitials ? 'Enter initials (e.g., JD)' : 'Enter your name'}
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none transition-all text-base"
+                    autoFocus
+                  />
+                  <p className="text-xs text-gray-500 mt-2">
+                    {isInitials
+                      ? 'Your initials will appear in cursive script'
+                      : 'Your name will appear in cursive script'}
+                  </p>
+                </div>
+
+                <div className="flex-1 flex items-center justify-center min-h-0">
+                  <div
+                    style={{
+                      width: `${width}px`,
+                      maxWidth: '100%',
+                      height,
+                      position: 'relative',
+                      margin: '0 auto'
+                    }}
+                  >
+                    <SecureSignatureFrame
+                      width={width}
+                      height={height}
+                      serialNumber={currentSerialNumber}
+                    />
+
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      {tempSignature ? (
+                        <img src={tempSignature} alt="Signature preview" className="max-w-full max-h-full object-contain" />
+                      ) : (
+                        <span className="text-gray-300 text-xs">Awaiting {isInitials ? 'initials' : 'signature'}...</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-4 md:px-6 py-3 md:py-4 border-t border-gray-200 bg-white">
+          {/* Security Notice */}
+          <div className="mb-3 flex items-start gap-2 text-xs text-gray-600 bg-blue-50 border border-blue-200 rounded-lg p-2">
+            <svg className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+            <p>Your {isInitials ? 'initials are' : 'signature is'} securely stored and will be used for document signing.</p>
+          </div>
+
+          {/* Buttons */}
+          <div className="flex gap-2 md:gap-3">
+            <button
+              onClick={handleClear}
+              disabled={!tempSignature}
+              className="px-4 py-2 md:py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium text-sm md:text-base"
+            >
+              Clear
+            </button>
+            <button
+              onClick={onClose}
+              className="flex-1 px-4 py-2 md:py-2.5 bg-white border-2 border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium text-sm md:text-base"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmSignature}
+              disabled={!tempSignature || isSaving}
+              className="flex-1 px-4 py-2 md:py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-bold text-sm md:text-base shadow-lg flex items-center justify-center gap-2"
+            >
+              {isSaving ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>Save {isInitials ? 'Initials' : 'Signature'}</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

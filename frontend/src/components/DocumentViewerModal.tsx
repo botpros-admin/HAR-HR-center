@@ -43,6 +43,7 @@ interface DocumentViewerModalProps {
   signatureUrl?: string | null;
   fieldPositions?: any;
   onSignNow?: () => void;
+  documentStatus?: string; // 'assigned' | 'sent' | 'signed' | 'expired'
 }
 
 export function DocumentViewerModal({
@@ -54,6 +55,7 @@ export function DocumentViewerModal({
   signatureUrl,
   fieldPositions,
   onSignNow,
+  documentStatus,
 }: DocumentViewerModalProps) {
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(true);
@@ -345,11 +347,27 @@ export function DocumentViewerModal({
           {/* Signature Status Info Bar - Single source of truth */}
           {requiresSignature && (
             <div className={`px-6 py-3 border-b ${
-              signatureUrl
+              documentStatus === 'assigned'
+                ? 'bg-blue-50 border-blue-100'
+                : signatureUrl
                 ? 'bg-green-50 border-green-100'
                 : 'bg-yellow-50 border-yellow-100'
             }`}>
-              {signatureUrl ? (
+              {documentStatus === 'assigned' ? (
+                // Document is assigned but signature request not yet created
+                <p className="text-sm text-gray-700 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="font-medium text-blue-900">
+                    Document preview available.
+                  </span>
+                  <span>
+                    The signature interface is being prepared in the background. You'll be able to sign this document soon. Check back in a few minutes or refresh the page.
+                  </span>
+                </p>
+              ) : signatureUrl ? (
+                // Signature URL is ready
                 <p className="text-sm text-gray-700 flex items-center gap-2">
                   <PenTool className="w-4 h-4 text-green-600" />
                   <span className="font-medium text-green-900">
@@ -360,16 +378,17 @@ export function DocumentViewerModal({
                   </span>
                 </p>
               ) : (
+                // Status is 'sent' but signature URL is temporarily null (rare race condition)
                 <p className="text-sm text-gray-700 flex items-center gap-2">
                   <svg className="w-4 h-4 text-yellow-600 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                   <span className="font-medium text-yellow-900">
-                    Setting up signature request...
+                    Loading signature interface...
                   </span>
                   <span>
-                    We're preparing your signing interface. This usually takes a few moments. Refresh the page in a minute if this persists.
+                    Please wait a moment. Refresh the page if this persists.
                   </span>
                 </p>
               )}

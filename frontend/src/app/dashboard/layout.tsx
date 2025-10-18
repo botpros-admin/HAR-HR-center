@@ -177,13 +177,13 @@ export default function DashboardLayout({
       <nav className="hidden lg:block bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex gap-6">
-            <NavLink href="/dashboard" icon={Home} isActive={pathname === '/dashboard'}>
+            <NavLink href="/dashboard" icon={Home}>
               Dashboard
             </NavLink>
-            <NavLink href="/dashboard/documents" icon={FileText} isActive={pathname === '/dashboard/documents'}>
+            <NavLink href="/dashboard/documents" icon={FileText}>
               Documents
             </NavLink>
-            <NavLink href="/dashboard/profile" icon={User} isActive={pathname === '/dashboard/profile'}>
+            <NavLink href="/dashboard/profile" icon={User}>
               Profile
             </NavLink>
           </div>
@@ -201,21 +201,30 @@ export default function DashboardLayout({
 function NavLink({
   href,
   icon: Icon,
-  isActive,
   children,
 }: {
   href: string;
   icon: any;
-  isActive: boolean;
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+
+  // Normalize paths by removing trailing slashes for comparison
+  const normalizedPathname = pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
+  const normalizedHref = href.endsWith('/') && href !== '/' ? href.slice(0, -1) : href;
+
+  // Match exact path OR sub-paths (but not /dashboard for everything)
+  const isActive =
+    normalizedPathname === normalizedHref ||
+    (normalizedHref !== '/dashboard' && normalizedPathname.startsWith(normalizedHref + '/'));
+
   return (
     <Link
       href={href}
       className={`flex items-center gap-2 px-3 py-4 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
         isActive
-          ? 'text-hartzell-blue border-hartzell-blue'
-          : 'text-gray-600 hover:text-hartzell-blue border-transparent hover:border-hartzell-blue'
+          ? 'text-hartzell-blue border-hartzell-blue bg-blue-50'
+          : 'text-gray-600 hover:text-hartzell-blue border-transparent hover:border-hartzell-blue hover:bg-blue-50'
       }`}
     >
       <Icon className="w-4 h-4 flex-shrink-0" />
@@ -235,11 +244,26 @@ function MobileNavLink({
   onClick: () => void;
   children: React.ReactNode;
 }) {
+  const pathname = usePathname();
+
+  // Normalize paths by removing trailing slashes for comparison
+  const normalizedPathname = pathname.endsWith('/') && pathname !== '/' ? pathname.slice(0, -1) : pathname;
+  const normalizedHref = href.endsWith('/') && href !== '/' ? href.slice(0, -1) : href;
+
+  // Match exact path OR sub-paths (but not /dashboard for everything)
+  const isActive =
+    normalizedPathname === normalizedHref ||
+    (normalizedHref !== '/dashboard' && normalizedPathname.startsWith(normalizedHref + '/'));
+
   return (
     <Link
       href={href}
       onClick={onClick}
-      className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+        isActive
+          ? 'bg-hartzell-blue text-white'
+          : 'text-gray-700 hover:bg-gray-100'
+      }`}
     >
       <Icon className="w-5 h-5 flex-shrink-0" />
       <span className="font-medium">{children}</span>

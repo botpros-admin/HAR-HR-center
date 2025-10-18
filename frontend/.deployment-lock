@@ -1,0 +1,16 @@
+# DEPLOYMENT LOCK FILE
+# This file enforces the correct deployment method
+
+DEPLOYMENT_METHOD=direct-upload
+PLATFORM=cloudflare-pages
+ALLOWED_COMMANDS=("npm run deploy" "npm run deploy:quick" "bash deploy.sh")
+
+# DO NOT:
+# - Use @cloudflare/next-on-pages
+# - Use vercel CLI
+# - Push to GitHub for auto-deploy (not configured)
+
+# ONLY USE:
+# npm run deploy
+
+# See DEPLOYMENT_GUIDE.md for full documentation

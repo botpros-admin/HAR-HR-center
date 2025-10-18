@@ -1,188 +1,149 @@
-# Frontend Deployment Guide
+# 🚀 Hartzell HR Center - Official Deployment Guide
 
-## ✅ Issue Fixed: 404 Errors on app.hartzell.work
+## ⚠️ CRITICAL: ONLY Use This Method
 
-### What Was Wrong
+This is the **ONLY** deployment method that works correctly for this project.
 
-The frontend was being deployed incorrectly, causing 404 errors. Two issues were identified:
+**DO NOT:**
+- ❌ Use `@cloudflare/next-on-pages` (uses Vercel CLI internally)
+- ❌ Use `vercel` CLI or any Vercel tools
+- ❌ Push to GitHub and use Git integration
+- ❌ Use any other Cloudflare adapter tools
 
-1. **Wrong folder deployed**: We were deploying the `.next` folder instead of the `out` folder
-2. **Static export not used**: Next.js with `output: 'export'` generates static files to the `out` directory
+**DO:**
+- ✅ Use the deployment script: `npm run deploy`
+- ✅ Or manually follow the 3-step process below
 
-### The Fix
+---
+
+## 📋 Deployment Methods
+
+### Method 1: Automated Script (Recommended)
 
 ```bash
-# ❌ WRONG - Do not deploy .next folder
-npx wrangler pages deploy .next --project-name=hartzell-hr-frontend
+npm run deploy
+```
 
-# ✅ CORRECT - Deploy the out folder
-npx wrangler pages deploy out --project-name=hartzell-hr-frontend
+This runs `deploy.sh` which handles everything automatically.
+
+### Method 2: Quick Deploy
+
+```bash
+npm run deploy:quick
+```
+
+Same as Method 1 but inline command.
+
+### Method 3: Manual (Step-by-Step)
+
+```bash
+# Step 1: Clean all caches
+rm -rf .next out node_modules/.cache
+
+# Step 2: Build Next.js app
+npm run build
+
+# Step 3: Deploy to Cloudflare Pages
+npx wrangler pages deploy out --project-name=hartzell-hr-frontend --branch=main --commit-dirty=true
 ```
 
 ---
 
-## 🚀 Proper Deployment Process
+## 🔧 How It Works
 
-### 1. Build the Application
+1. **Clean Caches**: Removes `.next`, `out`, and `node_modules/.cache` to prevent stale builds
+2. **Build**: `next build` creates a static export in the `out/` directory
+3. **Deploy**: `wrangler pages deploy` uploads the `out/` directory directly to Cloudflare Pages
 
+### Configuration Files
+
+- `next.config.js`: Must have `output: 'export'` for static builds
+- No `wrangler.toml` needed (using direct upload mode)
+- No Git integration configured (direct upload to Cloudflare)
+
+---
+
+## 🌐 Live URLs
+
+- **Production**: https://app.hartzell.work
+- **Cloudflare Pages**: https://hartzell-hr-frontend.pages.dev
+
+---
+
+## 📝 Deployment Checklist
+
+Before deploying:
+- [ ] Test changes locally with `npm run dev`
+- [ ] Verify build works with `npm run build`
+- [ ] Check for TypeScript errors with `npm run type-check`
+- [ ] Deploy with `npm run deploy`
+- [ ] Hard refresh browser (Ctrl+Shift+R) to see changes
+
+---
+
+## 🚫 Why Other Methods Don't Work
+
+### @cloudflare/next-on-pages
+- Uses Vercel CLI internally (`vercel build`)
+- Adds unnecessary complexity
+- Not needed for static exports
+
+### Vercel CLI
+- Not using Vercel platform
+- Cloudflare Pages only
+
+### Git Integration
+- Project uses "Direct Upload" mode
+- No GitHub connection needed
+- Changes deploy immediately without git commits
+
+---
+
+## 💡 Troubleshooting
+
+### Changes not appearing on live site?
+1. Hard refresh: **Ctrl+Shift+R** (Windows) or **Cmd+Shift+R** (Mac)
+2. Clear browser cache
+3. Check deployment succeeded: `npx wrangler pages deployment list --project-name=hartzell-hr-frontend`
+
+### Build caching issues?
+Always run the full clean before building:
 ```bash
-cd /mnt/c/Users/Agent/Desktop/HR\ Center/frontend
-export NODE_OPTIONS="--max-old-space-size=4096"
+rm -rf .next out node_modules/.cache
 npm run build
 ```
 
-This generates the static export to the `out` directory.
-
-### 2. Deploy to Cloudflare Pages
-
+### Deployment failed?
+Check Cloudflare credentials:
 ```bash
-npx wrangler pages deploy out --project-name=hartzell-hr-frontend --commit-dirty=true
-```
-
-**Important**: Deploy the `out` folder, NOT `.next`!
-
-### 3. Verify Deployment
-
-After deployment, you'll get a URL like `https://abc123.hartzell-hr-frontend.pages.dev`
-
-Test it:
-```bash
-curl -I https://abc123.hartzell-hr-frontend.pages.dev/
-curl -I https://abc123.hartzell-hr-frontend.pages.dev/login/
-```
-
-Both should return `HTTP/2 200`.
-
-### 4. Check Custom Domain
-
-The custom domain `app.hartzell.work` is already configured and will automatically serve the latest production deployment.
-
-Verify it's working:
-```bash
-curl -I https://app.hartzell.work/
-curl -I https://app.hartzell.work/login/
+npx wrangler whoami
 ```
 
 ---
 
-## 📁 Directory Structure Explanation
+## 📦 Project Structure
 
 ```
 frontend/
-├── .next/          ❌ Build artifacts (NOT for deployment)
-├── out/            ✅ Static export (DEPLOY THIS)
-├── src/            Source code
-├── public/         Static assets (copied to out/)
-└── next.config.js  Contains output: 'export'
+├── src/              # Source code
+├── public/           # Static assets
+├── out/              # Build output (generated)
+├── .next/            # Next.js cache (generated)
+├── deploy.sh         # Official deployment script
+└── package.json      # npm scripts including "deploy"
 ```
-
-### Why `out` and not `.next`?
-
-When Next.js is configured with `output: 'export'`, it:
-- Generates fully static HTML/CSS/JS files
-- Places them in the `out` directory
-- Optimizes for static hosting (like Cloudflare Pages)
-
-The `.next` folder contains build artifacts for Node.js server runtime, which we don't use.
 
 ---
 
-## 🔧 Next.js Configuration
+## 🔐 Environment Setup
 
-The `next.config.js` is properly configured:
-
-```js
-module.exports = {
-  reactStrictMode: true,
-  output: 'export',        // ← Static export mode
-  images: {
-    unoptimized: true,      // ← Required for static export
-  },
-  trailingSlash: true,      // ← Better routing on static hosts
-};
-```
-
-**Do not change `output: 'export'`** - this is required for static deployment.
+Required environment variables in Cloudflare Pages dashboard:
+- `NEXT_PUBLIC_API_URL` - Backend API URL
+- `NEXT_PUBLIC_TURNSTILE_SITE_KEY` - Cloudflare Turnstile key
+- Other Next.js public env vars
 
 ---
 
-## 🌐 Custom Domain Setup
-
-The custom domain `app.hartzell.work` is already configured in Cloudflare Pages:
-
-```
-Project: hartzell-hr-frontend
-Domains:
-  - hartzell-hr-frontend.pages.dev (default)
-  - app.hartzell.work (custom)
-```
-
-No DNS changes are needed - Cloudflare handles it automatically.
-
----
-
-## 🐛 Troubleshooting
-
-### Problem: Getting 404 errors on app.hartzell.work
-
-**Solution**: Make sure you deployed the `out` folder, not `.next`
-
-```bash
-# Re-deploy correctly
-npm run build
-npx wrangler pages deploy out --project-name=hartzell-hr-frontend
-```
-
-### Problem: Static assets (JS/CSS) not loading
-
-**Symptoms**: Blank page, console errors about missing chunks
-
-**Solution**: The `out` folder contains all static assets. Deploy it again:
-
-```bash
-rm -rf out
-npm run build
-npx wrangler pages deploy out --project-name=hartzell-hr-frontend
-```
-
-### Problem: Environment variables not working
-
-**Location**: Set environment variables in Cloudflare Dashboard
-
-1. Go to: https://dash.cloudflare.com
-2. Navigate to: Pages → hartzell-hr-frontend → Settings → Environment variables
-3. Add variables for both Production and Preview
-
-**Note**: `.env.local` is only used during local development, not in production.
-
----
-
-## 📊 Current Live Deployment
-
-- **Custom Domain**: https://app.hartzell.work ✅
-- **Pages URL**: https://ba780ac1.hartzell-hr-frontend.pages.dev ✅
-- **Deployed**: October 11, 2025
-- **Status**: Working correctly
-
-All features confirmed working:
-- ✅ Landing page loads
-- ✅ Login page loads
-- ✅ JavaScript assets load correctly
-- ✅ Lottie animation accessible at `/animations/signature.json`
-- ✅ CSRF token included in API requests
-- ✅ Signature boxes centered and responsive
-
----
-
-## 🔄 Quick Reference
-
-```bash
-# Full deployment workflow (copy-paste friendly)
-cd /mnt/c/Users/Agent/Desktop/HR\ Center/frontend
-export NODE_OPTIONS="--max-old-space-size=4096"
-rm -rf out .next
-npm run build
-npx wrangler pages deploy out --project-name=hartzell-hr-frontend --commit-dirty=true
-```
-
-Then verify at: https://app.hartzell.work
+**Last Updated**: October 13, 2025
+**Deployment Method**: Direct Upload via Wrangler CLI
+**Platform**: Cloudflare Pages

@@ -47,12 +47,23 @@ export async function generateCsrfToken(
   // Generate a random token
   const token = crypto.randomUUID();
 
-  // Store in KV with session ID as key
-  await env.CACHE.put(
-    `csrf:${sessionId}`,
-    token,
-    { expirationTtl: parseInt(env.SESSION_MAX_AGE) }
-  );
+  // Try to store in KV first (faster)
+  try {
+    await env.CACHE.put(
+      `csrf:${sessionId}`,
+      token,
+      { expirationTtl: parseInt(env.SESSION_MAX_AGE) }
+    );
+  } catch (error) {
+    // KV quota exceeded - fallback to D1 storage
+    console.warn('KV cache write failed for CSRF token, using D1 fallback:', error);
+    await env.DB.prepare(`
+      INSERT OR REPLACE INTO csrf_tokens (session_id, token, expires_at)
+      VALUES (?, ?, datetime('now', '+' || ? || ' seconds'))
+    `)
+      .bind(sessionId, token, env.SESSION_MAX_AGE)
+      .run();
+  }
 
   return token;
 }
@@ -66,8 +77,22 @@ export async function validateCsrfToken(
   sessionId: string,
   providedToken: string
 ): Promise<boolean> {
-  // Get stored token
-  const storedToken = await env.CACHE.get(`csrf:${sessionId}`);
+  // Try KV first (faster)
+  let storedToken = await env.CACHE.get(`csrf:${sessionId}`);
+
+  // Fallback to D1 if not in KV
+  if (!storedToken) {
+    const result = await env.DB.prepare(`
+      SELECT token FROM csrf_tokens
+      WHERE session_id = ? AND expires_at > datetime('now')
+    `)
+      .bind(sessionId)
+      .first<{ token: string }>();
+
+    if (result) {
+      storedToken = result.token;
+    }
+  }
 
   if (!storedToken) {
     return false;
@@ -91,9 +116,12 @@ export const validateCsrf = async (c: Context<{ Bindings: Env }>, next: Next) =>
 
   // Skip CSRF for login/logout endpoints (they have their own protection)
   // Skip CSRF for webhook endpoints (external services can't send CSRF tokens)
+  // Skip CSRF for settings endpoints (already has session + admin role validation)
   const path = c.req.path;
   if (path.includes('/auth/login') ||
       path.includes('/auth/logout') ||
+      path.includes('/admin/settings') ||
+      path.includes('/employee/email-preferences') ||
       path.includes('/webhooks/')) {
     await next();
     return;

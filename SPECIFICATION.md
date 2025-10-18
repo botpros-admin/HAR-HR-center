@@ -59,9 +59,17 @@ All employee data is stored in Bitrix24 CRM (entity type 1054). The system acts 
    - Assign templates to employees
    - Track assignment status (pending/completed)
 
+5. **E-Signature System (Native White-Label)**
+   - HTML5 canvas signature capture (draw and typed modes)
+   - pdf-lib integration for embedding signatures in PDFs
+   - Multi-page PDF support with field overlays
+   - Automatic Bitrix24 file upload and timeline entries
+   - Audit logging with serial numbers
+   - Mobile-responsive signature interface
+
 ### Not Implemented
 
-- E-signature system (OpenSign integration was planned but abandoned)
+- Third-party e-signature service (OpenSign was evaluated but replaced with native pdf-lib system)
 - Email notifications
 - Performance review system
 - Disciplinary action tracking

@@ -183,12 +183,17 @@ export async function createSession(
     )
     .run();
 
-  // Cache in KV for faster lookups
-  await env.CACHE.put(
-    `session:${sessionId}`,
-    JSON.stringify(sessionData),
-    { expirationTtl: parseInt(env.SESSION_MAX_AGE) }
-  );
+  // Cache in KV for faster lookups (non-critical, fail gracefully)
+  try {
+    await env.CACHE.put(
+      `session:${sessionId}`,
+      JSON.stringify(sessionData),
+      { expirationTtl: parseInt(env.SESSION_MAX_AGE) }
+    );
+  } catch (error) {
+    // KV quota exceeded or error - ignore and continue (D1 has the data)
+    console.warn('KV cache write failed (quota exceeded?):', error);
+  }
 
   return { ...sessionData, id: sessionId };
 }
@@ -240,12 +245,17 @@ export async function verifySession(
     .bind(sessionId)
     .run();
 
-  // Refresh KV cache
-  await env.CACHE.put(
-    `session:${sessionId}`,
-    result.data,
-    { expirationTtl: parseInt(env.SESSION_MAX_AGE) }
-  );
+  // Refresh KV cache (non-critical, fail gracefully)
+  try {
+    await env.CACHE.put(
+      `session:${sessionId}`,
+      result.data,
+      { expirationTtl: parseInt(env.SESSION_MAX_AGE) }
+    );
+  } catch (error) {
+    // KV quota exceeded or error - ignore and continue
+    console.warn('KV cache refresh failed (quota exceeded?):', error);
+  }
 
   return sessionData;
 }

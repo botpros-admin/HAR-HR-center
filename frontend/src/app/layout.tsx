@@ -23,7 +23,7 @@ export default function RootLayout({
           async
           defer
         ></script>
-        {/* Preload Dancing Script font for signatures */}
+        {/* Preload signature fonts */}
         <link
           rel="preconnect"
           href="https://fonts.googleapis.com"
@@ -34,7 +34,7 @@ export default function RootLayout({
           crossOrigin="anonymous"
         />
         <link
-          href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Dancing+Script:wght@700&family=Great+Vibes&family=Allura&display=swap"
           rel="stylesheet"
         />
       </head>

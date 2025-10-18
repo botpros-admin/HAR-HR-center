@@ -6,7 +6,11 @@ import { api } from '@/lib/api';
 import { useState, useCallback, useMemo, memo, useEffect } from 'react';
 import { z } from 'zod';
 import TagInput from '@/components/TagInput';
+import FileField from '@/components/FileField';
+import MultiSelectField from '@/components/MultiSelectField';
+import { EQUIPMENT_OPTIONS, SOFTWARE_ACCESS_OPTIONS, getOptionLabel } from '@/lib/bitrixFieldOptions';
 import { useGooglePlaces } from '@/hooks/useGooglePlaces';
+import { User } from 'lucide-react';
 
 // Comprehensive validation schema for all 136 fields
 const employeeSchema = z.object({
@@ -30,7 +34,7 @@ const employeeSchema = z.object({
   city: z.string().max(100).optional(),
   state: z.string().max(2).optional(),
   zipCode: z.string().max(10).optional(),
-  profilePhoto: z.string().optional(),
+  profilePhoto: z.any().optional(),
 
   // Emergency Contact (3 fields)
   emergencyContactName: z.string().optional(),
@@ -64,6 +68,10 @@ const employeeSchema = z.object({
   w4Exemptions: z.string().optional(),
   additionalFedWithhold: z.string().optional(),
   additionalStateWithhold: z.string().optional(),
+  w4File: z.any().optional(),
+  i9File: z.any().optional(),
+  multipleJobsWorksheet: z.any().optional(),
+  deductionsWorksheet: z.any().optional(),
 
   // Banking & Direct Deposit (6 fields)
   bankName: z.string().optional(),
@@ -71,6 +79,7 @@ const employeeSchema = z.object({
   bankAccountType: z.string().optional(),
   bankRouting: z.string().optional(),
   bankAccountNumber: z.string().optional(),
+  directDeposit: z.any().optional(),
 
   // Dependents (4 fields)
   dependentNames: z.array(z.string()).optional(),
@@ -94,6 +103,11 @@ const employeeSchema = z.object({
   trainingDate: z.string().optional(),
   nextTrainingDue: z.string().optional(),
   trainingNotes: z.string().optional(),
+  trainingComplete: z.any().optional(),
+  professionalCertifications: z.any().optional(),
+  trainingRecords: z.any().optional(),
+  skillsAssessment: z.any().optional(),
+  trainingDocs: z.any().optional(),
 
   // IT & Equipment (11 fields)
   softwareExperience: z.array(z.string()).optional(),
@@ -109,16 +123,27 @@ const employeeSchema = z.object({
   remoteAccess: z.boolean().optional(),
 
   // Vehicle & Licensing (2 fields + 2 expiry)
+  driversLicense: z.any().optional(),
   driversLicenseExpiry: z.string().optional(),
+  autoInsurance: z.any().optional(),
   autoInsuranceExpiry: z.string().optional(),
 
   // Work Authorization (2 fields)
+  workVisa: z.any().optional(),
   visaExpiry: z.string().optional(),
 
   // Performance & Reviews (3 fields)
   reviewDates: z.array(z.string()).optional(),
   terminationDate: z.string().optional(),
   rehireEligible: z.boolean().optional(),
+
+  // Documents (6 file fields)
+  hiringPaperwork: z.any().optional(),
+  handbookAck: z.any().optional(),
+  backgroundCheck: z.any().optional(),
+  drugTest: z.any().optional(),
+  nda: z.any().optional(),
+  noncompete: z.any().optional(),
 
   // Additional Information (1 field)
   additionalInfo: z.string().max(5000).optional(),
@@ -372,6 +397,10 @@ const Field = memo(({ label, value, name, type = 'text', required = false, optio
     // Handle password fields
     else if (type === 'password') {
       displayValue = '***-**-****';
+    }
+    // Handle select fields - convert ID to label
+    else if (type === 'select' && value && options) {
+      displayValue = getOptionLabel(options, value);
     }
     // Handle arrays
     else if (Array.isArray(value)) {
@@ -816,6 +845,7 @@ export default function EmployeeDetailPage() {
     it: false,
     vehicle: false,
     performance: false,
+    documents: false,
     additional: false,
   });
 
@@ -965,6 +995,7 @@ export default function EmployeeDetailPage() {
       gender: toStr(employee.ufCrm6PersonalGender),
       maritalStatus: employee.ufCrm6MaritalStatus || '',
       citizenship: toStr(employee.ufCrm6Citizenship),
+      profilePhoto: employee.ufCrm6ProfilePhoto || null,
       personalEmail: employee.ufCrm6Email || [],
       personalPhone: employee.ufCrm6PersonalMobile || [],
       workPhone: employee.ufCrm6WorkPhone || '',
@@ -1046,6 +1077,10 @@ export default function EmployeeDetailPage() {
       w4Exemptions: employee.ufCrm_6_W4_EXEMPTIONS || '',
       additionalFedWithhold: employee.ufCrm6AdditionalFedWithhold || '',
       additionalStateWithhold: employee.ufCrm6AdditionalStateWithhold || '',
+      w4File: employee.ufCrm_6_UF_W4_FILE || null,
+      i9File: employee.ufCrm_6_UF_I9_FILE || null,
+      multipleJobsWorksheet: employee.ufCrm6MultipleJobsWorksheet || null,
+      deductionsWorksheet: employee.ufCrm6DeductionsWorksheet || null,
 
       // Banking
       bankName: employee.ufCrm6BankName || '',
@@ -1053,6 +1088,7 @@ export default function EmployeeDetailPage() {
       bankAccountType: employee.ufCrm6BankAccountType || '',
       bankRouting: employee.ufCrm6BankRouting || '',
       bankAccountNumber: employee.ufCrm6BankAccountNumber || '',
+      directDeposit: employee.ufCrm6DirectDeposit || null,
 
       // Dependents
       dependentNames: employee.ufCrm6DependentNames || [],
@@ -1076,6 +1112,11 @@ export default function EmployeeDetailPage() {
       trainingDate: employee.ufCrm6TrainingDate || '',
       nextTrainingDue: employee.ufCrm6NextTrainingDue || '',
       trainingNotes: employee.ufCrm6TrainingNotes || '',
+      trainingComplete: employee.ufCrm6TrainingComplete || null,
+      professionalCertifications: employee.ufCrm6ProfessionalCertifications || null,
+      trainingRecords: employee.ufCrm6TrainingRecords || null,
+      skillsAssessment: employee.ufCrm6SkillsAssessment || null,
+      trainingDocs: employee.ufCrm6TrainingDocs || null,
 
       // IT & Equipment
       softwareExperience: Array.isArray(employee.ufCrm6SoftwareExperience) ? employee.ufCrm6SoftwareExperience : (employee.ufCrm6SoftwareExperience ? employee.ufCrm6SoftwareExperience.split(',').map((s: string) => s.trim()) : []),
@@ -1091,16 +1132,27 @@ export default function EmployeeDetailPage() {
       remoteAccess: toBool(employee.ufCrm6RemoteAccess),
 
       // Vehicle & Licensing
+      driversLicense: employee.ufCrm_6_UF_USR_1747966315398 || null,
       driversLicenseExpiry: employee.ufCrm_6_UF_USR_1747966315398_EXPIRY || '',
+      autoInsurance: employee.ufCrm_6_UF_USR_1737120327618 || null,
       autoInsuranceExpiry: employee.ufCrm_6_UF_USR_1737120327618_EXPIRY || '',
 
       // Work Authorization
+      workVisa: employee.ufCrm6WorkVisa || null,
       visaExpiry: employee.ufCrm6VisaExpiry || '',
 
       // Performance & Reviews
       reviewDates: employee.ufCrm6ReviewDate || [],
       terminationDate: employee.ufCrm6TerminationDate || '',
       rehireEligible: toBool(employee.ufCrm6RehireEligible),
+
+      // Documents
+      hiringPaperwork: employee.ufCrm6HiringPaperwork || null,
+      handbookAck: employee.ufCrm6HandbookAck || null,
+      backgroundCheck: employee.ufCrm6BackgroundCheck || null,
+      drugTest: employee.ufCrm6DrugTest || null,
+      nda: employee.ufCrm6Nda || null,
+      noncompete: employee.ufCrm6Noncompete || null,
 
       // Additional Information
       additionalInfo: employee.ufCrm6AdditionalInfo || '',
@@ -1161,6 +1213,7 @@ export default function EmployeeDetailPage() {
       gender: employee.ufCrm6PersonalGender,
       maritalStatus: employee.ufCrm6MaritalStatus,
       citizenship: employee.ufCrm6Citizenship,
+      profilePhoto: employee.ufCrm6ProfilePhoto,
       personalEmail: employee.ufCrm6Email,
       personalPhone: employee.ufCrm6PersonalMobile,
       workPhone: employee.ufCrm6WorkPhone,
@@ -1205,6 +1258,10 @@ export default function EmployeeDetailPage() {
       w4Exemptions: employee.ufCrm_6_W4_EXEMPTIONS,
       additionalFedWithhold: employee.ufCrm6AdditionalFedWithhold,
       additionalStateWithhold: employee.ufCrm6AdditionalStateWithhold,
+      w4File: employee.ufCrm_6_UF_W4_FILE,
+      i9File: employee.ufCrm_6_UF_I9_FILE,
+      multipleJobsWorksheet: employee.ufCrm6MultipleJobsWorksheet,
+      deductionsWorksheet: employee.ufCrm6DeductionsWorksheet,
 
       // Banking
       bankName: employee.ufCrm6BankName,
@@ -1212,6 +1269,7 @@ export default function EmployeeDetailPage() {
       bankAccountType: employee.ufCrm6BankAccountType,
       bankRouting: employee.ufCrm6BankRouting,
       bankAccountNumber: employee.ufCrm6BankAccountNumber,
+      directDeposit: employee.ufCrm6DirectDeposit,
 
       // Dependents
       dependentNames: employee.ufCrm6DependentNames,
@@ -1235,6 +1293,11 @@ export default function EmployeeDetailPage() {
       trainingDate: employee.ufCrm6TrainingDate,
       nextTrainingDue: employee.ufCrm6NextTrainingDue,
       trainingNotes: employee.ufCrm6TrainingNotes,
+      trainingComplete: employee.ufCrm6TrainingComplete,
+      professionalCertifications: employee.ufCrm6ProfessionalCertifications,
+      trainingRecords: employee.ufCrm6TrainingRecords,
+      skillsAssessment: employee.ufCrm6SkillsAssessment,
+      trainingDocs: employee.ufCrm6TrainingDocs,
 
       // IT & Equipment
       softwareExperience: Array.isArray(employee.ufCrm6SoftwareExperience) ? employee.ufCrm6SoftwareExperience : (employee.ufCrm6SoftwareExperience ? employee.ufCrm6SoftwareExperience.split(',').map((s: string) => s.trim()) : []),
@@ -1250,16 +1313,27 @@ export default function EmployeeDetailPage() {
       remoteAccess: employee.ufCrm6RemoteAccess,
 
       // Vehicle & Licensing
+      driversLicense: employee.ufCrm_6_UF_USR_1747966315398,
       driversLicenseExpiry: employee.ufCrm_6_UF_USR_1747966315398_EXPIRY,
+      autoInsurance: employee.ufCrm_6_UF_USR_1737120327618,
       autoInsuranceExpiry: employee.ufCrm_6_UF_USR_1737120327618_EXPIRY,
 
       // Work Authorization
+      workVisa: employee.ufCrm6WorkVisa,
       visaExpiry: employee.ufCrm6VisaExpiry,
 
       // Performance & Reviews
       reviewDates: employee.ufCrm6ReviewDate,
       terminationDate: employee.ufCrm6TerminationDate,
       rehireEligible: employee.ufCrm6RehireEligible,
+
+      // Documents
+      hiringPaperwork: employee.ufCrm6HiringPaperwork,
+      handbookAck: employee.ufCrm6HandbookAck,
+      backgroundCheck: employee.ufCrm6BackgroundCheck,
+      drugTest: employee.ufCrm6DrugTest,
+      nda: employee.ufCrm6Nda,
+      noncompete: employee.ufCrm6Noncompete,
 
       // Additional Information
       additionalInfo: employee.ufCrm6AdditionalInfo,
@@ -1285,6 +1359,29 @@ export default function EmployeeDetailPage() {
     updateField('zipCode', place.zipCode);
   }, [updateField]);
 
+  // Handler for file upload - use updated employee data for immediate UI update
+  const handleFileUploaded = useCallback(async (updatedEmployee?: any) => {
+    if (updatedEmployee) {
+      // NEW CODE PATH: Instant update with fresh employee data from API response
+      queryClient.setQueryData(['employee', bitrixId], { employee: updatedEmployee });
+    } else {
+      // FALLBACK for OLD cached JavaScript: Retry refetch to handle Bitrix24 eventual consistency
+      queryClient.invalidateQueries({ queryKey: ['employee', bitrixId] });
+
+      // Wait 2 seconds for Bitrix24 cache to clear
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Retry refetch up to 5 times with 2s delays (total 10s max wait)
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await queryClient.refetchQueries({ queryKey: ['employee', bitrixId] });
+
+        if (attempt < 4) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+    }
+  }, [queryClient, bitrixId]);
+
   // Early returns AFTER all hooks (satisfies Rules of Hooks)
   if (isLoading) {
     return (
@@ -1305,16 +1402,44 @@ export default function EmployeeDetailPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       {/* Compact enterprise header */}
-      <div className="sticky top-0 z-50 bg-gradient-to-r from-slate-700 to-slate-800 border-b border-slate-900 shadow">
+      <div className="sticky top-0 z-10 bg-gradient-to-r from-slate-700 to-slate-800 border-b border-slate-900 shadow">
         <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-3">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-base sm:text-lg font-semibold text-white truncate">
-                {currentData.firstName || '—'} {currentData.lastName || '—'}
-              </h1>
-              <p className="text-xs text-slate-300 mt-0.5 truncate">
-                #{currentData.badgeNumber || '—'} · {currentData.position || '—'} · {currentData.employmentStatus === 'Y' ? 'Active' : 'Inactive'}
-              </p>
+            <div className="flex items-center gap-3 min-w-0 flex-1">
+              {/* Profile Photo Circle */}
+              <div className="flex-shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-slate-600 flex items-center justify-center border-2 border-slate-500 overflow-hidden">
+                {(() => {
+                  // Check if profile photo exists and is valid
+                  const hasPhoto = currentData.profilePhoto &&
+                    (
+                      (typeof currentData.profilePhoto === 'object' && Object.keys(currentData.profilePhoto).length > 0) ||
+                      (typeof currentData.profilePhoto === 'number' && currentData.profilePhoto > 0) ||
+                      (Array.isArray(currentData.profilePhoto) && currentData.profilePhoto.length > 0)
+                    );
+
+                  if (hasPhoto) {
+                    const photoUrl = `${process.env.NEXT_PUBLIC_API_URL}/admin/employee/${bitrixId}/file/profilePhoto`;
+                    return (
+                      <img
+                        src={photoUrl}
+                        alt="Profile"
+                        className="w-full h-full object-cover"
+                      />
+                    );
+                  }
+
+                  return <User className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />;
+                })()}
+              </div>
+              {/* Name and Info */}
+              <div className="min-w-0 flex-1">
+                <h1 className="text-base sm:text-lg font-semibold text-white truncate">
+                  {currentData.firstName || '—'} {currentData.lastName || '—'}
+                </h1>
+                <p className="text-xs text-slate-300 mt-0.5 truncate">
+                  #{currentData.badgeNumber || '—'} · {currentData.position || '—'} · {currentData.subsidiary ? getOptionLabel(SUBSIDIARY_OPTIONS, currentData.subsidiary) : '—'} · {currentData.employmentStatus === 'Y' ? 'Active' : 'Inactive'}
+                </p>
+              </div>
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               {!isEditing ? (
@@ -1364,7 +1489,7 @@ export default function EmployeeDetailPage() {
       <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-3">
         {/* Personal Information */}
         <Section title="Personal Information" isOpen={openSections.personal} onToggle={() => toggleSection('personal')}>
-          <div className="grid grid-cols-1 gap-x-3 md:gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
             <Field label="First Name" value={currentData.firstName} name="firstName" required validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Middle Name" value={currentData.middleName} name="middleName" validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Last Name" value={currentData.lastName} name="lastName" required validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
@@ -1404,6 +1529,7 @@ export default function EmployeeDetailPage() {
               setShowBankRouting={setShowBankRouting}
               handleFieldChange={handleFieldChange}
             />
+            <FileField label="Profile Photo" value={currentData.profilePhoto} name="profilePhoto" colSpan={1} isEditing={isEditing} onFileUploaded={handleFileUploaded} />
             <Field label="Personal Email" value={currentData.personalEmail?.[0]} name="personalEmail" type="email" required validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <PhoneField label="Personal Phone" value={currentData.personalPhone?.[0]} name="personalPhone" validationErrors={validationErrors} isEditing={isEditing} handleFieldChange={handleFieldChange} />
             <PhoneField label="Work Cell Phone" value={currentData.workPhone} name="workPhone" validationErrors={validationErrors} isEditing={isEditing} handleFieldChange={handleFieldChange} />
@@ -1428,7 +1554,7 @@ export default function EmployeeDetailPage() {
 
         {/* Emergency Contact */}
         <Section title="Emergency Contact" isOpen={openSections.emergency} onToggle={() => toggleSection('emergency')}>
-          <div className="grid grid-cols-1 gap-x-3 md:gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
             <Field label="Contact Name" value={currentData.emergencyContactName} name="emergencyContactName"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Contact Phone" value={currentData.emergencyContactPhone} name="emergencyContactPhone" type="tel"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Relationship" value={currentData.emergencyContactRelationship} name="emergencyContactRelationship"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
@@ -1437,7 +1563,7 @@ export default function EmployeeDetailPage() {
 
         {/* Employment Details */}
         <Section title="Employment Details" isOpen={openSections.employment} onToggle={() => toggleSection('employment')}>
-          <div className="grid grid-cols-1 gap-x-3 md:gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
             <Field label="Badge Number" value={currentData.badgeNumber} name="badgeNumber"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Position" value={currentData.position} name="position" required  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field
@@ -1556,7 +1682,7 @@ export default function EmployeeDetailPage() {
 
         {/* Citizenship & Work Authorization */}
         <Section title="Citizenship & Work Authorization" isOpen={openSections.citizenship} onToggle={() => toggleSection('citizenship')}>
-          <div className="grid grid-cols-1 gap-x-3 md:gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
             <Field
               label="Citizenship Status"
               value={currentData.citizenship}
@@ -1576,14 +1702,17 @@ export default function EmployeeDetailPage() {
               handleFieldChange={handleFieldChange}
             />
             {currentData.citizenship !== '2026' && (
-              <Field label="Visa/Work Authorization Expiry" value={currentData.visaExpiry} name="visaExpiry" type="date"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
+              <>
+                <FileField label="Work Visa/Authorization Document" value={currentData.workVisa} name="workVisa" colSpan={1} isEditing={isEditing} onFileUploaded={handleFileUploaded} />
+                <Field label="Visa/Work Authorization Expiry" value={currentData.visaExpiry} name="visaExpiry" type="date"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
+              </>
             )}
           </div>
         </Section>
 
         {/* Compensation & Benefits */}
         <Section title="Compensation & Benefits" isOpen={openSections.compensation} onToggle={() => toggleSection('compensation')}>
-          <div className="grid grid-cols-1 gap-x-3 md:gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
             <SSNField label="SSN" value={currentData.ssn} name="ssn" validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} setShowSSN={setShowSSN} handleFieldChange={handleFieldChange} />
             <Field label="PTO Days" value={currentData.ptoDays} name="ptoDays"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Health Insurance" value={currentData.healthInsurance} name="healthInsurance"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
@@ -1594,7 +1723,7 @@ export default function EmployeeDetailPage() {
 
         {/* Tax & Payroll */}
         <Section title="Tax & Payroll Information" isOpen={openSections.tax} onToggle={() => toggleSection('tax')}>
-          <div className="grid grid-cols-1 gap-x-3 md:gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
             <Field
               label="Payment Method"
               value={currentData.paymentMethod}
@@ -1634,12 +1763,16 @@ export default function EmployeeDetailPage() {
             <Field label="W-4 Exemptions" value={currentData.w4Exemptions} name="w4Exemptions"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Additional Federal Withholding" value={currentData.additionalFedWithhold} name="additionalFedWithhold"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Additional State Withholding" value={currentData.additionalStateWithhold} name="additionalStateWithhold"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
+            <FileField label="W-4 Form" value={currentData.w4File} name="w4File" colSpan={1} isEditing={isEditing} onFileUploaded={handleFileUploaded} />
+            <FileField label="I-9 Form" value={currentData.i9File} name="i9File" colSpan={1} isEditing={isEditing} onFileUploaded={handleFileUploaded} />
+            <FileField label="Multiple Jobs Worksheet" value={currentData.multipleJobsWorksheet} name="multipleJobsWorksheet" colSpan={1} isEditing={isEditing} onFileUploaded={handleFileUploaded} />
+            <FileField label="Deductions Worksheet" value={currentData.deductionsWorksheet} name="deductionsWorksheet" colSpan={1} isEditing={isEditing} onFileUploaded={handleFileUploaded} />
           </div>
         </Section>
 
         {/* Banking & Direct Deposit */}
         <Section title="Banking & Direct Deposit" isOpen={openSections.banking} onToggle={() => toggleSection('banking')}>
-          <div className="grid grid-cols-1 gap-x-3 md:gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
             <Field label="Bank Name" value={currentData.bankName} name="bankName"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Account Holder Name" value={currentData.bankAccountName} name="bankAccountName"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field
@@ -1662,21 +1795,23 @@ export default function EmployeeDetailPage() {
             />
             <Field label="Routing Number" value={currentData.bankRouting} name="bankRouting" type="password"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Account Number" value={currentData.bankAccountNumber} name="bankAccountNumber" type="password"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
+            <FileField label="Direct Deposit Authorization" value={currentData.directDeposit} name="directDeposit" colSpan={2} isEditing={isEditing} onFileUploaded={handleFileUploaded} />
           </div>
         </Section>
 
         {/* Dependents & Beneficiaries */}
         <Section title="Dependents & Beneficiaries" isOpen={openSections.dependents} onToggle={() => toggleSection('dependents')}>
-          <div className="grid grid-cols-1 gap-x-3 md:gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
             <TagField label="Dependent Names" value={currentData.dependentNames} name="dependentNames" colSpan={3}  validationErrors={validationErrors} isEditing={isEditing} updateField={updateField} />
             <TagField label="Dependent SSNs" value={currentData.dependentSsns} name="dependentSsns" colSpan={3}  validationErrors={validationErrors} isEditing={isEditing} updateField={updateField} />
             <TagField label="Dependent Relationships" value={currentData.dependentRelationships} name="dependentRelationships" colSpan={3}  validationErrors={validationErrors} isEditing={isEditing} updateField={updateField} />
+            <TagField label="Dependents Information" value={currentData.dependentsInfo} name="dependentsInfo" colSpan={3}  validationErrors={validationErrors} isEditing={isEditing} updateField={updateField} />
           </div>
         </Section>
 
         {/* Education & Skills */}
         <Section title="Education & Skills" isOpen={openSections.education} onToggle={() => toggleSection('education')}>
-          <div className="grid grid-cols-1 gap-x-3 md:gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
             <Field
               label="Education Level"
               value={currentData.educationLevel}
@@ -1723,7 +1858,7 @@ export default function EmployeeDetailPage() {
 
         {/* Training & Compliance */}
         <Section title="Training & Compliance" isOpen={openSections.training} onToggle={() => toggleSection('training')}>
-          <div className="grid grid-cols-1 gap-x-3 md:gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
             <Field
               label="Required Training Status"
               value={currentData.requiredTrainingStatus}
@@ -1781,14 +1916,19 @@ export default function EmployeeDetailPage() {
             <Field label="Training Completion Date" value={currentData.trainingDate} name="trainingDate" type="date"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Next Training Due" value={currentData.nextTrainingDue} name="nextTrainingDue" type="date"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Training Notes" value={currentData.trainingNotes} name="trainingNotes" type="textarea" colSpan={3}  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
+            <FileField label="Training Completion Certificates" value={currentData.trainingComplete} name="trainingComplete" colSpan={1} isEditing={isEditing} isMultiple={true} onFileUploaded={handleFileUploaded} />
+            <FileField label="Professional Certifications" value={currentData.professionalCertifications} name="professionalCertifications" colSpan={1} isEditing={isEditing} isMultiple={true} onFileUploaded={handleFileUploaded} />
+            <FileField label="Training Records" value={currentData.trainingRecords} name="trainingRecords" colSpan={1} isEditing={isEditing} isMultiple={true} onFileUploaded={handleFileUploaded} />
+            <FileField label="Skills Assessment" value={currentData.skillsAssessment} name="skillsAssessment" colSpan={1} isEditing={isEditing} isMultiple={true} onFileUploaded={handleFileUploaded} />
+            <FileField label="Training Documents" value={currentData.trainingDocs} name="trainingDocs" colSpan={2} isEditing={isEditing} isMultiple={true} onFileUploaded={handleFileUploaded} />
           </div>
         </Section>
 
         {/* IT & Equipment */}
         <Section title="IT & Equipment" isOpen={openSections.it} onToggle={() => toggleSection('it')}>
-          <div className="grid grid-cols-1 gap-x-3 md:gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
             <TagField label="Software Experience" value={currentData.softwareExperience} name="softwareExperience" colSpan={3}  validationErrors={validationErrors} isEditing={isEditing} updateField={updateField} />
-            <TagField label="Equipment Assigned" value={currentData.equipmentAssigned} name="equipmentAssigned" colSpan={3}  validationErrors={validationErrors} isEditing={isEditing} updateField={updateField} />
+            <MultiSelectField label="Equipment Assigned" value={currentData.equipmentAssigned} name="equipmentAssigned" options={EQUIPMENT_OPTIONS} colSpan={3} isEditing={isEditing} handleFieldChange={(name, value) => handleFieldChange(name as keyof EmployeeFormData, value)} validationErrors={validationErrors} />
             <Field
               label="Equipment Status"
               value={currentData.equipmentStatus}
@@ -1808,7 +1948,7 @@ export default function EmployeeDetailPage() {
               handleFieldChange={handleFieldChange}
             />
             <Field label="Equipment Return Tracking" value={currentData.equipmentReturn} name="equipmentReturn"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
-            <TagField label="Software Access" value={currentData.softwareAccess} name="softwareAccess" colSpan={3}  validationErrors={validationErrors} isEditing={isEditing} updateField={updateField} />
+            <MultiSelectField label="Software Access" value={currentData.softwareAccess} name="softwareAccess" options={SOFTWARE_ACCESS_OPTIONS} colSpan={3} isEditing={isEditing} handleFieldChange={(name, value) => handleFieldChange(name as keyof EmployeeFormData, value)} validationErrors={validationErrors} />
             <TagField label="Access Permissions" value={currentData.accessPermissions} name="accessPermissions" colSpan={3}  validationErrors={validationErrors} isEditing={isEditing} updateField={updateField} />
             <Field
               label="Access Level"
@@ -1871,18 +2011,32 @@ export default function EmployeeDetailPage() {
 
         {/* Vehicle & Licensing */}
         <Section title="Vehicle & Licensing" isOpen={openSections.vehicle} onToggle={() => toggleSection('vehicle')}>
-          <div className="grid grid-cols-1 gap-x-3 md:gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+            <FileField label="Driver's License" value={currentData.driversLicense} name="driversLicense" colSpan={1} isEditing={isEditing} onFileUploaded={handleFileUploaded} />
             <Field label="Driver's License Expiry" value={currentData.driversLicenseExpiry} name="driversLicenseExpiry" type="date"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
+            <FileField label="Automobile Insurance" value={currentData.autoInsurance} name="autoInsurance" colSpan={1} isEditing={isEditing} onFileUploaded={handleFileUploaded} />
             <Field label="Auto Insurance Expiry" value={currentData.autoInsuranceExpiry} name="autoInsuranceExpiry" type="date"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
           </div>
         </Section>
 
         {/* Performance & Reviews */}
         <Section title="Performance & Reviews" isOpen={openSections.performance} onToggle={() => toggleSection('performance')}>
-          <div className="grid grid-cols-1 gap-x-3 md:gap-x-4 gap-y-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
             <TagField label="Performance Review Dates" value={currentData.reviewDates} name="reviewDates" colSpan={2}  validationErrors={validationErrors} isEditing={isEditing} updateField={updateField} />
             <Field label="Termination Date" value={currentData.terminationDate} name="terminationDate" type="date"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
             <Field label="Rehire Eligible" value={currentData.rehireEligible} name="rehireEligible" type="checkbox"  validationErrors={validationErrors} isEditing={isEditing} showSSN={showSSN} showBankAccount={showBankAccount} showBankRouting={showBankRouting} setShowSSN={setShowSSN} setShowBankAccount={setShowBankAccount} setShowBankRouting={setShowBankRouting} handleFieldChange={handleFieldChange} />
+          </div>
+        </Section>
+
+        {/* Documents */}
+        <Section title="Documents" isOpen={openSections.documents} onToggle={() => toggleSection('documents')}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+            <FileField label="Hiring Paperwork" value={currentData.hiringPaperwork} name="hiringPaperwork" colSpan={1} isEditing={isEditing} isMultiple={true} onFileUploaded={handleFileUploaded} />
+            <FileField label="Employee Handbook Acknowledgment" value={currentData.handbookAck} name="handbookAck" colSpan={1} isEditing={isEditing} onFileUploaded={handleFileUploaded} />
+            <FileField label="Background Check" value={currentData.backgroundCheck} name="backgroundCheck" colSpan={1} isEditing={isEditing} onFileUploaded={handleFileUploaded} />
+            <FileField label="Drug Test Results" value={currentData.drugTest} name="drugTest" colSpan={1} isEditing={isEditing} onFileUploaded={handleFileUploaded} />
+            <FileField label="NDA Agreement" value={currentData.nda} name="nda" colSpan={1} isEditing={isEditing} onFileUploaded={handleFileUploaded} />
+            <FileField label="Non-Compete Agreement" value={currentData.noncompete} name="noncompete" colSpan={1} isEditing={isEditing} onFileUploaded={handleFileUploaded} />
           </div>
         </Section>
 

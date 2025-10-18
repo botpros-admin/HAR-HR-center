@@ -111,9 +111,14 @@ class ApiClient {
   }
 
   async updateProfile(field: string, value: any): Promise<EmployeeProfile> {
+    // For bulk updates, spread the fields into the root of the body
+    const body = field === 'bulk'
+      ? { field, ...value }
+      : { field, value };
+
     return this.request<EmployeeProfile>('/employee/profile', {
       method: 'PUT',
-      body: JSON.stringify({ field, value }),
+      body: JSON.stringify(body),
     });
   }
 
@@ -237,12 +242,17 @@ class ApiClient {
 
   async createAssignment(data: {
     templateId: string;
-    employeeIds: number[];
+    employeeIds?: number[];
+    signers?: Array<{
+      bitrixId: number;
+      order: number;
+      roleName: string;
+    }>;
     priority?: string;
     dueDate?: string;
     notes?: string;
-  }): Promise<{ success: boolean; message: string; assignments: any[] }> {
-    return this.request<{ success: boolean; message: string; assignments: any[] }>('/admin/assignments', {
+  }): Promise<{ success: boolean; message: string; assignments?: any[]; assignment?: any }> {
+    return this.request<{ success: boolean; message: string; assignments?: any[]; assignment?: any }>('/admin/assignments', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -250,6 +260,270 @@ class ApiClient {
 
   async deleteAssignment(assignmentId: number): Promise<{ success: boolean; message: string }> {
     return this.request<{ success: boolean; message: string }>(`/admin/assignments/${assignmentId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // Admin - Dashboard
+  async getDashboardStats(): Promise<{ stats: any }> {
+    return this.request<{ stats: any }>('/admin/stats');
+  }
+
+  async getRecentActivity(limit: number = 10): Promise<{ activities: any[] }> {
+    return this.request<{ activities: any[] }>(`/admin/recent-activity?limit=${limit}`);
+  }
+
+  // Admin - Employee File Management
+  async uploadEmployeeFile(
+    bitrixId: number,
+    fieldName: string,
+    file: File,
+    isMultiple: boolean = false
+  ): Promise<{ success: boolean; message: string; employee: any }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const url = `${this.baseUrl}/admin/employee/${bitrixId}/file/${fieldName}${isMultiple ? '?multiple=true' : ''}`;
+
+    const headers: Record<string, string> = {};
+
+    // Add CSRF token for POST request
+    if (this.csrfToken) {
+      headers['X-CSRF-Token'] = this.csrfToken;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'include',
+    });
+
+    const data = await response.json().catch(() => ({
+      error: 'Upload failed',
+    }));
+
+    if (!response.ok) {
+      const error: any = new Error(data.error || `HTTP ${response.status}`);
+      error.response = data;
+      throw error;
+    }
+
+    return data;
+  }
+
+  async deleteEmployeeFile(
+    bitrixId: number,
+    fieldName: string,
+    fileId?: number
+  ): Promise<{ success: boolean; message: string; employee: any }> {
+    const url = `${this.baseUrl}/admin/employee/${bitrixId}/file/${fieldName}${fileId ? `?fileId=${fileId}` : ''}`;
+
+    const headers: Record<string, string> = {};
+
+    // Add CSRF token for DELETE request
+    if (this.csrfToken) {
+      headers['X-CSRF-Token'] = this.csrfToken;
+    }
+
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers,
+      credentials: 'include',
+    });
+
+    const data = await response.json().catch(() => ({
+      error: 'Delete failed',
+    }));
+
+    if (!response.ok) {
+      const error: any = new Error(data.error || `HTTP ${response.status}`);
+      error.response = data;
+      throw error;
+    }
+
+    return data;
+  }
+
+  // Employee Signature Management
+  async uploadSignature(signatureBlob: Blob): Promise<{ success: boolean; message: string }> {
+    const formData = new FormData();
+    formData.append('signature', signatureBlob, 'signature.png');
+
+    const url = `${this.baseUrl}/employee/profile/signature`;
+
+    const headers: Record<string, string> = {};
+
+    // Add CSRF token for POST request
+    if (this.csrfToken) {
+      headers['X-CSRF-Token'] = this.csrfToken;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'include',
+    });
+
+    const data = await response.json().catch(() => ({
+      error: 'Upload failed',
+    }));
+
+    if (!response.ok) {
+      const error: any = new Error(data.error || `HTTP ${response.status}`);
+      error.response = data;
+      throw error;
+    }
+
+    return data;
+  }
+
+  async deleteSignature(): Promise<{ success: boolean; message: string }> {
+    const url = `${this.baseUrl}/employee/profile/signature`;
+
+    const headers: Record<string, string> = {};
+
+    // Add CSRF token for DELETE request
+    if (this.csrfToken) {
+      headers['X-CSRF-Token'] = this.csrfToken;
+    }
+
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers,
+      credentials: 'include',
+    });
+
+    const data = await response.json().catch(() => ({
+      error: 'Delete failed',
+    }));
+
+    if (!response.ok) {
+      const error: any = new Error(data.error || `HTTP ${response.status}`);
+      error.response = data;
+      throw error;
+    }
+
+    return data;
+  }
+
+  async uploadInitials(initialsBlob: Blob): Promise<{ success: boolean; message: string }> {
+    const formData = new FormData();
+    formData.append('signature', initialsBlob, 'initials.png');
+
+    const url = `${this.baseUrl}/employee/profile/initials`;
+
+    const headers: Record<string, string> = {};
+
+    // Add CSRF token for POST request
+    if (this.csrfToken) {
+      headers['X-CSRF-Token'] = this.csrfToken;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+      credentials: 'include',
+    });
+
+    const data = await response.json().catch(() => ({
+      error: 'Upload failed',
+    }));
+
+    if (!response.ok) {
+      const error: any = new Error(data.error || `HTTP ${response.status}`);
+      error.response = data;
+      throw error;
+    }
+
+    return data;
+  }
+
+  async deleteInitials(): Promise<{ success: boolean; message: string }> {
+    const url = `${this.baseUrl}/employee/profile/initials`;
+
+    const headers: Record<string, string> = {};
+
+    // Add CSRF token for DELETE request
+    if (this.csrfToken) {
+      headers['X-CSRF-Token'] = this.csrfToken;
+    }
+
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers,
+      credentials: 'include',
+    });
+
+    const data = await response.json().catch(() => ({
+      error: 'Delete failed',
+    }));
+
+    if (!response.ok) {
+      const error: any = new Error(data.error || `HTTP ${response.status}`);
+      error.response = data;
+      throw error;
+    }
+
+    return data;
+  }
+
+  // Admin - Email Settings
+  async getEmailSettings(): Promise<{ settings: any }> {
+    return this.request<{ settings: any }>('/admin/settings/email');
+  }
+
+  async updateEmailSettings(settings: any): Promise<{ success: boolean; message: string; settings: any }> {
+    return this.request<{ success: boolean; message: string; settings: any }>('/admin/settings/email', {
+      method: 'PUT',
+      body: JSON.stringify(settings),
+    });
+  }
+
+  async sendTestEmail(email: string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>('/admin/settings/email/test', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  async getEmailLogs(params?: { limit?: number; status?: string; type?: string }): Promise<{ logs: any[]; stats: any }> {
+    const searchParams = new URLSearchParams();
+    if (params?.limit) searchParams.set('limit', params.limit.toString());
+    if (params?.status) searchParams.set('status', params.status);
+    if (params?.type) searchParams.set('type', params.type);
+    const query = searchParams.toString();
+    return this.request<{ logs: any[]; stats: any }>(`/admin/settings/email/logs${query ? '?' + query : ''}`);
+  }
+
+  // Employee - Email Preferences
+  async getEmailPreferences(): Promise<{ preferences: any }> {
+    return this.request<{ preferences: any }>('/employee/email-preferences');
+  }
+
+  async updateEmailPreferences(preferences: any): Promise<{ success: boolean; message: string; preferences: any }> {
+    return this.request<{ success: boolean; message: string; preferences: any }>('/employee/email-preferences', {
+      method: 'PUT',
+      body: JSON.stringify(preferences),
+    });
+  }
+
+  // Admin - Admin Management
+  async getAdmins(): Promise<{ admins: any[] }> {
+    return this.request<{ admins: any[] }>('/admin/admins');
+  }
+
+  async promoteAdmin(bitrixId: number, notes?: string): Promise<{ success: boolean; message: string; admin: any }> {
+    return this.request<{ success: boolean; message: string; admin: any }>('/admin/admins', {
+      method: 'POST',
+      body: JSON.stringify({ bitrixId, notes }),
+    });
+  }
+
+  async removeAdmin(bitrixId: number): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/admin/admins/${bitrixId}`, {
       method: 'DELETE',
     });
   }

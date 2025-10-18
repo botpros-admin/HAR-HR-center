@@ -239,6 +239,7 @@ export default function DocumentsPage() {
           signatureUrl={viewerModal.document.signatureUrl}
           fieldPositions={viewerModal.document.fieldPositions}
           onSignNow={handleSignFromViewer}
+          documentStatus={viewerModal.document.status}
         />
       )}
 
@@ -540,7 +541,8 @@ function DocumentRow({
 
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:flex-shrink-0">
-        {document.status === 'sent' && (
+        {/* Sign Now button - show for ANY document that requires signature and isn't complete */}
+        {document.requiresSignature && !document.isComplete && !document.isExpired && (
           <button
             onClick={() => onSign(document.signatureUrl, document.title, document.id, document.fieldPositions)}
             className="btn-primary flex items-center justify-center gap-2 whitespace-nowrap"
@@ -549,6 +551,7 @@ function DocumentRow({
             Sign Now
           </button>
         )}
+        {/* View Signed - show for completed documents */}
         {document.isComplete && document.signedDocumentUrl && (
           <button
             onClick={() => onView(document)}
@@ -558,7 +561,8 @@ function DocumentRow({
             View Signed
           </button>
         )}
-        {!document.isComplete && document.status === 'assigned' && (
+        {/* View - show for unsigned documents that don't require signature */}
+        {!document.isComplete && !document.requiresSignature && (
           <button
             onClick={() => onView(document)}
             className="btn-secondary flex items-center justify-center gap-2 whitespace-nowrap"

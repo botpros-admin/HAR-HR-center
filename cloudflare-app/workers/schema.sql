@@ -57,15 +57,15 @@ CREATE INDEX IF NOT EXISTS idx_ratelimit_identifier ON rate_limits(identifier);
 CREATE INDEX IF NOT EXISTS idx_ratelimit_type ON rate_limits(attempt_type);
 CREATE INDEX IF NOT EXISTS idx_ratelimit_blocked ON rate_limits(blocked_until);
 
--- Signature request tracking (OpenSign integration)
+-- Signature request tracking (LEGACY - OpenSign removed, replaced with native pdf-lib system)
+-- This table is retained for historical compatibility but no longer actively used
 CREATE TABLE IF NOT EXISTS signature_requests (
-  id TEXT PRIMARY KEY, -- OpenSign request ID
+  id TEXT PRIMARY KEY, -- Request ID
   employee_id INTEGER NOT NULL,
   bitrix_id INTEGER NOT NULL,
   document_type TEXT NOT NULL,
   document_title TEXT,
   status TEXT NOT NULL, -- 'pending', 'signed', 'declined', 'expired'
-  opensign_url TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   sent_at TIMESTAMP,
   signed_at TIMESTAMP,

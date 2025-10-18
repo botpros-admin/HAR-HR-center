@@ -21,6 +21,9 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        'dancing': ['"Dancing Script"', 'cursive'],
+        'great-vibes': ['"Great Vibes"', 'cursive'],
+        'allura': ['"Allura"', 'cursive'],
       },
     },
   },

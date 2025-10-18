@@ -15,10 +15,15 @@ routes = [
 # Environment Variables (non-secret)
 [vars]
 BITRIX24_ENTITY_TYPE_ID = "1054"
-OPENSIGN_ENV = "sandbox"
 SESSION_MAX_AGE = "28800"  # 8 hours in seconds
 RATE_LIMIT_MAX_ATTEMPTS = "5"
 RATE_LIMIT_WINDOW = "900"  # 15 minutes in seconds
+
+# Secrets (set via: wrangler secret put SECRET_NAME)
+# - SESSION_SECRET
+# - BITRIX24_WEBHOOK_URL
+# - OPENSIGN_API_KEY
+# - RESEND_API_KEY (for email service)
 
 # D1 Database (Production)
 [[d1_databases]]
@@ -39,6 +44,11 @@ bucket_name = "hartzell-assets-prod"
 [[r2_buckets]]
 binding = "DOCUMENTS"
 bucket_name = "hartzell-hr-templates-prod"
+
+# Cron Triggers (scheduled tasks)
+# Runs daily at 9:00 AM Eastern Time (13:00 UTC)
+[triggers]
+crons = ["0 13 * * *"]
 
 # Observability
 [observability]

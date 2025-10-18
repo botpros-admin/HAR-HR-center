@@ -136,58 +136,49 @@ frontend/
 └── README.md
 ```
 
-## Deployment Options
+## Deployment
 
-### Option 1: Cloudflare Pages (Recommended)
+### Official Method: Cloudflare Pages (Direct Upload)
 
+⚠️ **IMPORTANT**: This is the ONLY supported deployment method for this project.
+
+**Method 1: Automated Script (Recommended)**
 ```bash
-# Install Wrangler CLI
-npm install -g wrangler
+npm run deploy
+```
 
-# Login to Cloudflare
-wrangler login
+**Method 2: Quick Deploy**
+```bash
+npm run deploy:quick
+```
 
-# Build and deploy
+**Method 3: Manual Steps**
+```bash
+# Step 1: Clean caches
+rm -rf .next out node_modules/.cache
+
+# Step 2: Build static export
 npm run build
-wrangler pages deploy .next
+
+# Step 3: Deploy to Cloudflare Pages
+npx wrangler pages deploy out --project-name=hartzell-hr-frontend --branch=main --commit-dirty=true
 ```
 
-Configure in Cloudflare Pages dashboard:
-- Build command: `npm run build`
-- Build output directory: `.next`
-- Environment variables: Add `NEXT_PUBLIC_*` vars
+**DO NOT:**
+- ❌ Use `@cloudflare/next-on-pages` (uses Vercel CLI internally)
+- ❌ Use Vercel CLI or platform
+- ❌ Use Git integration for auto-deploy
+- ❌ Deploy any directory other than `out/`
 
-### Option 2: Vercel
+**Configuration:**
+- Build output directory: `out/` (static export)
+- Project name: `hartzell-hr-frontend`
+- Deployment mode: Direct Upload
+- Environment variables: Set in Cloudflare Pages dashboard
 
-```bash
-# Install Vercel CLI
-npm install -g vercel
-
-# Deploy
-vercel
-
-# Set environment variables in Vercel dashboard
-```
-
-### Option 3: Docker
-
-```dockerfile
-# Create Dockerfile
-FROM node:20-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY . .
-RUN npm run build
-EXPOSE 3000
-CMD ["npm", "start"]
-```
-
-```bash
-# Build and run
-docker build -t hartzell-hr-frontend .
-docker run -p 3000:3000 hartzell-hr-frontend
-```
+**See Also:**
+- Complete deployment guide: `DEPLOYMENT_GUIDE.md`
+- Deployment script: `deploy.sh`
 
 ## Environment Variables
 

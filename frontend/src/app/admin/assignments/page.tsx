@@ -444,6 +444,8 @@ function AssignModal({
     dueDate: '',
     notes: ''
   });
+  const [isMultiSigner, setIsMultiSigner] = useState(false);
+  const [signers, setSigners] = useState<Array<{ bitrixId: number; employeeName: string; roleName: string; order: number }>>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -496,24 +498,113 @@ function AssignModal({
     }));
   };
 
+  // Multi-signer functions
+  const addSigner = (employee: any, roleName: string = '') => {
+    const newOrder = signers.length + 1;
+    if (newOrder > 4) {
+      onValidationError('Maximum 4 signers allowed per document');
+      return;
+    }
+    setSigners(prev => [...prev, {
+      bitrixId: employee.id,
+      employeeName: employee.name,
+      roleName: roleName || `Signer ${newOrder}`,
+      order: newOrder
+    }]);
+  };
+
+  const removeSigner = (order: number) => {
+    setSigners(prev => {
+      const filtered = prev.filter(s => s.order !== order);
+      // Reorder remaining signers
+      return filtered.map((s, idx) => ({ ...s, order: idx + 1 }));
+    });
+  };
+
+  const moveSignerUp = (order: number) => {
+    if (order === 1) return;
+    setSigners(prev => {
+      const newSigners = [...prev];
+      const idx = newSigners.findIndex(s => s.order === order);
+      const prevIdx = newSigners.findIndex(s => s.order === order - 1);
+      if (idx !== -1 && prevIdx !== -1) {
+        newSigners[idx].order = order - 1;
+        newSigners[prevIdx].order = order;
+      }
+      return newSigners.sort((a, b) => a.order - b.order);
+    });
+  };
+
+  const moveSignerDown = (order: number) => {
+    if (order === signers.length) return;
+    setSigners(prev => {
+      const newSigners = [...prev];
+      const idx = newSigners.findIndex(s => s.order === order);
+      const nextIdx = newSigners.findIndex(s => s.order === order + 1);
+      if (idx !== -1 && nextIdx !== -1) {
+        newSigners[idx].order = order + 1;
+        newSigners[nextIdx].order = order;
+      }
+      return newSigners.sort((a, b) => a.order - b.order);
+    });
+  };
+
+  const updateSignerRole = (order: number, roleName: string) => {
+    setSigners(prev => prev.map(s => s.order === order ? { ...s, roleName } : s));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (formData.employeeIds.length === 0) {
-      onValidationError('Please select at least one employee');
-      return;
+    // Validation
+    if (isMultiSigner) {
+      if (signers.length < 2) {
+        onValidationError('Multi-signer mode requires at least 2 signers');
+        return;
+      }
+      if (signers.length > 4) {
+        onValidationError('Maximum 4 signers allowed per document');
+        return;
+      }
+      // Check for missing role names
+      const missingRoles = signers.filter(s => !s.roleName.trim());
+      if (missingRoles.length > 0) {
+        onValidationError('Please provide a role name for all signers');
+        return;
+      }
+    } else {
+      if (formData.employeeIds.length === 0) {
+        onValidationError('Please select at least one employee');
+        return;
+      }
     }
 
     setIsSubmitting(true);
 
     try {
-      await api.createAssignment({
-        templateId: formData.templateId,
-        employeeIds: formData.employeeIds,
-        priority: formData.priority,
-        dueDate: formData.dueDate || undefined,
-        notes: formData.notes || undefined
-      });
+      if (isMultiSigner) {
+        // Multi-signer mode: send signers array
+        await api.createAssignment({
+          templateId: formData.templateId,
+          signers: signers.map(s => ({
+            bitrixId: s.bitrixId,
+            order: s.order,
+            roleName: s.roleName
+          })),
+          priority: formData.priority,
+          dueDate: formData.dueDate || undefined,
+          notes: formData.notes || undefined
+        });
+      } else {
+        // Single-signer mode: send employeeIds array
+        await api.createAssignment({
+          templateId: formData.templateId,
+          employeeIds: formData.employeeIds,
+          priority: formData.priority,
+          dueDate: formData.dueDate || undefined,
+          notes: formData.notes || undefined
+        });
+      }
 
       onSuccess();
     } catch (error: any) {
@@ -566,7 +657,52 @@ function AssignModal({
               </select>
             </div>
 
-            {/* Employee Selection */}
+            {/* Mode Toggle */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-sm font-semibold text-gray-900">Signing Mode</label>
+                  <p className="text-xs text-gray-600 mt-1">
+                    {isMultiSigner
+                      ? 'Multiple signers will sign sequentially in order (1 → 2 → 3)'
+                      : 'Each selected employee will sign their own copy'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMultiSigner(!isMultiSigner);
+                    if (!isMultiSigner) {
+                      // Switching to multi-signer: clear single selections
+                      setFormData(prev => ({ ...prev, employeeIds: [] }));
+                    } else {
+                      // Switching to single-signer: clear multi selections
+                      setSigners([]);
+                    }
+                  }}
+                  className={`relative inline-flex h-8 w-14 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-hartzell-blue focus:ring-offset-2 ${
+                    isMultiSigner ? 'bg-hartzell-blue' : 'bg-gray-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-7 w-7 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      isMultiSigner ? 'translate-x-6' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
+              <div className="mt-2 text-xs font-medium">
+                {isMultiSigner ? (
+                  <span className="text-hartzell-blue">✓ Multi-Signer Mode (2-4 signers)</span>
+                ) : (
+                  <span className="text-gray-600">Single-Signer Mode</span>
+                )}
+              </div>
+            </div>
+
+            {/* Conditional: Single-Signer or Multi-Signer Interface */}
+            {!isMultiSigner ? (
+              /* Employee Selection (Single-Signer) */
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-semibold text-gray-700">
@@ -641,6 +777,162 @@ function AssignModal({
                 )}
               </div>
             </div>
+            ) : (
+              /* Multi-Signer Interface */
+              <div>
+                {/* Selected Signers List */}
+                {signers.length > 0 && (
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold text-gray-700 mb-3">
+                      Signing Sequence <span className="text-red-500">*</span>
+                      <span className="ml-2 text-hartzell-blue font-bold">
+                        ({signers.length} signer{signers.length === 1 ? '' : 's'})
+                      </span>
+                    </label>
+                    <div className="space-y-3">
+                      {signers.map((signer, index) => (
+                        <div key={signer.order} className="flex items-start gap-3">
+                          {/* Order Number */}
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-hartzell-blue text-white flex items-center justify-center font-bold text-sm mt-1">
+                            {signer.order}
+                          </div>
+
+                          {/* Signer Details */}
+                          <div className="flex-1 bg-white border border-gray-300 rounded-lg p-3">
+                            <div className="text-sm font-semibold text-gray-900 mb-2">
+                              {signer.employeeName}
+                            </div>
+                            <input
+                              type="text"
+                              placeholder="Role (e.g., Employee, Manager, HR)"
+                              value={signer.roleName}
+                              onChange={(e) => updateSignerRole(signer.order, e.target.value)}
+                              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-hartzell-blue focus:border-transparent"
+                              required
+                            />
+                          </div>
+
+                          {/* Reorder Buttons */}
+                          <div className="flex flex-col gap-1 mt-1">
+                            <button
+                              type="button"
+                              onClick={() => moveSignerUp(signer.order)}
+                              disabled={signer.order === 1}
+                              className="p-1 text-gray-600 hover:text-hartzell-blue disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              title="Move up"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveSignerDown(signer.order)}
+                              disabled={signer.order === signers.length}
+                              className="p-1 text-gray-600 hover:text-hartzell-blue disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              title="Move down"
+                            >
+                              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </button>
+                          </div>
+
+                          {/* Remove Button */}
+                          <button
+                            type="button"
+                            onClick={() => removeSigner(signer.order)}
+                            className="flex-shrink-0 p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors mt-1"
+                            title="Remove signer"
+                          >
+                            <XCircle className="w-5 h-5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Visual Sequence Indicator */}
+                    {signers.length > 1 && (
+                      <div className="mt-4 flex items-center gap-2 text-xs text-gray-600 bg-blue-50 p-3 rounded-lg">
+                        <svg className="w-4 h-4 text-hartzell-blue flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <span>
+                          Document will be signed in order: <strong>{signers.map(s => s.roleName || `Signer ${s.order}`).join(' → ')}</strong>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Add Signer Section */}
+                {signers.length < 4 && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      {signers.length === 0 ? 'Add Signers' : 'Add Another Signer'}
+                      {signers.length === 0 && <span className="text-red-500"> *</span>}
+                      {signers.length > 0 && <span className="ml-2 text-xs text-gray-500">(Optional, max 4 signers)</span>}
+                    </label>
+
+                    {/* Search Bar */}
+                    <div className="relative mb-3">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search employees to add as signers..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-hartzell-blue focus:border-transparent shadow-sm"
+                      />
+                    </div>
+
+                    {/* Employee Selection List */}
+                    <div className="border border-gray-300 rounded-lg bg-gray-50 max-h-48 overflow-y-auto">
+                      {employees.length === 0 ? (
+                        <div className="p-4 text-center">
+                          <p className="text-sm text-gray-500">Loading employees...</p>
+                        </div>
+                      ) : filteredEmployees.filter((e: any) => !signers.some(s => s.bitrixId === e.id)).length === 0 ? (
+                        <div className="p-4 text-center">
+                          <p className="text-sm text-gray-500">
+                            {searchQuery ? 'No employees match your search' : 'All available employees have been added'}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="p-2">
+                          {filteredEmployees
+                            .filter((employee: any) => !signers.some(s => s.bitrixId === employee.id))
+                            .map((employee: any) => (
+                              <button
+                                key={employee.id}
+                                type="button"
+                                onClick={() => addSigner(employee)}
+                                className="w-full flex items-center gap-3 hover:bg-white p-3 rounded-lg transition-colors text-left"
+                              >
+                                <div className="w-8 h-8 rounded-full bg-gray-300 text-gray-700 flex items-center justify-center text-xs font-medium flex-shrink-0">
+                                  {employee.name.split(' ').map((n: string) => n[0]).join('')}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium text-gray-900 text-sm truncate">{employee.name}</div>
+                                  <div className="text-xs text-gray-500">{employee.badgeNumber}</div>
+                                </div>
+                                <UserPlus className="w-5 h-5 text-hartzell-blue flex-shrink-0" />
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Max Signers Notice */}
+                {signers.length >= 4 && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+                    <strong>Maximum signers reached.</strong> You can have up to 4 signers per document.
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Priority & Due Date - Side by Side on Desktop */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -702,7 +994,11 @@ function AssignModal({
               </button>
               <button
                 type="submit"
-                disabled={!formData.templateId || formData.employeeIds.length === 0 || isSubmitting}
+                disabled={
+                  !formData.templateId ||
+                  isSubmitting ||
+                  (isMultiSigner ? signers.length < 2 : formData.employeeIds.length === 0)
+                }
                 className="flex-1 px-6 py-3 bg-gradient-to-r from-hartzell-blue to-blue-600 text-white rounded-lg font-semibold hover:from-hartzell-blue/90 hover:to-blue-600/90 transition-all disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed shadow-lg disabled:shadow-none"
               >
                 {isSubmitting ? (
@@ -711,8 +1007,10 @@ function AssignModal({
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
                     </svg>
-                    Creating Assignments...
+                    Creating {isMultiSigner ? 'Multi-Signer Assignment' : 'Assignments'}...
                   </span>
+                ) : isMultiSigner ? (
+                  `Create Multi-Signer Assignment (${signers.length} signer${signers.length === 1 ? '' : 's'})`
                 ) : (
                   `Assign to ${formData.employeeIds.length} Employee${formData.employeeIds.length === 1 ? '' : 's'}`
                 )}

@@ -541,7 +541,7 @@ export function NativeSignatureModal({
         />
       )}
 
-    <div className="fixed inset-0 z-50 overflow-hidden" style={{ touchAction: 'none' }}>
+      <div className="fixed inset-0 z-50 overflow-hidden" style={{ touchAction: 'none' }}>
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-gray-900 bg-opacity-75 transition-opacity backdrop-blur-sm"
@@ -607,9 +607,10 @@ export function NativeSignatureModal({
             ) : (
               <>
                 {/* PDF Viewer - Multi-page scrollable */}
-                <div className="flex-1 overflow-auto p-2 md:p-6 bg-gray-50 flex items-start justify-center">
-                  <div ref={pdfContainerRef} className="w-full max-w-4xl">
-                    {!pdfComponents ? (
+                <div className="flex-1 overflow-auto bg-gray-50">
+                  <div className="flex items-start justify-center p-2 sm:p-4">
+                    <div ref={pdfContainerRef} className="w-full max-w-4xl">
+                      {!pdfComponents ? (
                       <div className="flex items-center justify-center p-12">
                         <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                         <span className="ml-3 text-gray-600">Loading PDF viewer...</span>
@@ -645,6 +646,7 @@ export function NativeSignatureModal({
                                 }
                               }}
                               className="relative mb-4 bg-white shadow-lg rounded-lg"
+                              style={{ width: '800px' }}
                             >
                               {/* Page number indicator */}
                               <div className="absolute top-2 right-2 bg-gray-800 bg-opacity-75 text-white text-xs px-2 py-1 rounded z-20 pointer-events-none">
@@ -700,6 +702,7 @@ export function NativeSignatureModal({
                         <p className="text-red-700">Failed to load document</p>
                       </div>
                     )}
+                    </div>
                   </div>
                 </div>
               </>
@@ -960,7 +963,7 @@ export function NativeSignatureModal({
             </div>
           </div>
       )}
-    </div>
+      </div>
     </>
   );
 }
