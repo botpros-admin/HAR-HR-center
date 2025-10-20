@@ -1,6 +1,6 @@
 ---
 name: Bitrix24 Integration
-description: Access Bitrix24 CRM via SSH database access and REST API. Use when working with Bitrix24 fields, employee data, CRM items, or when the user mentions Bitrix24, HR Center, applicants, or employee management. Provides direct database access and REST API integration.
+description: Complete reference for Bitrix24 CRM fields, enum values, database queries, SSH access, and REST API. Use when user asks about Bitrix24 fields, enum values, education levels, employment types, shift preferences, field IDs, database queries, SSH credentials, API endpoints, webhook URLs, or needs to query/access Bitrix24 data. Contains all connection details, field mappings, and ready-to-use SQL queries.
 allowed-tools: Bash, Read, Write, Edit, Grep, Glob
 ---
 
