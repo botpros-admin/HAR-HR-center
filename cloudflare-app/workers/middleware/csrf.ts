@@ -117,12 +117,23 @@ export const validateCsrf = async (c: Context<{ Bindings: Env }>, next: Next) =>
   // Skip CSRF for login/logout endpoints (they have their own protection)
   // Skip CSRF for webhook endpoints (external services can't send CSRF tokens)
   // Skip CSRF for settings endpoints (already has session + admin role validation)
+  // Skip CSRF for public application submission (no session required)
+  // Skip CSRF for public application auto-save endpoints (no session required)
+  // Skip CSRF for onboarding portal (uses magic link token authentication)
   const path = c.req.path;
   if (path.includes('/auth/login') ||
       path.includes('/auth/logout') ||
       path.includes('/admin/settings') ||
       path.includes('/employee/email-preferences') ||
-      path.includes('/webhooks/')) {
+      path.includes('/applications/submit') ||
+      path.includes('/applications/save-field') ||
+      path.includes('/applications/check-duplicate') ||
+      path.includes('/applications/resume') ||
+      path.includes('/applications/send-verification') ||
+      path.includes('/applications/verify-pin') ||
+      path.includes('/onboard/') ||
+      path.includes('/webhooks/') ||
+      path.includes('/bitrix/')) {
     await next();
     return;
   }

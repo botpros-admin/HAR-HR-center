@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { X, Download, Upload, ArrowUpDown, AlertCircle, CheckCircle, AlertTriangle } from 'lucide-react';
+import { X, Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle, AlertTriangle, Loader2, Database, Shield } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { api } from '@/lib/api';
 
 interface ImportExportModalProps {
   isOpen: boolean;
@@ -142,6 +143,9 @@ export default function ImportExportModal({
   const [importData, setImportData] = useState<ImportRow[]>([]);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
   const [isValidating, setIsValidating] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState({ current: 0, total: 0 });
+  const [importResults, setImportResults] = useState<{ success: number; failed: number; errors: string[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -500,25 +504,190 @@ export default function ImportExportModal({
     onClose();
   };
 
+  // Map CSV columns to API field names
+  const mapRowToAPIFormat = (row: ImportRow) => {
+    const splitArray = (str: string | undefined) => str ? str.split(';').map(s => s.trim()).filter(Boolean) : [];
+
+    return {
+      // Personal Information
+      firstName: row['First Name'],
+      middleName: row['Middle Name'] || '',
+      lastName: row['Last Name'],
+      preferredName: row['Preferred Name'] || '',
+      dateOfBirth: row['Date of Birth'] || '',
+      gender: row['Gender'] || '',
+      maritalStatus: row['Marital Status'] || '',
+      citizenship: row['Citizenship Status'] || '',
+      personalEmail: splitArray(row['Personal Email']),
+      personalPhone: splitArray(row['Personal Phone']),
+      workPhone: row['Work Cell Phone'] || '',
+      officePhone: row['Office Phone'] || '',
+      officeExtension: row['Office Extension'] || '',
+      addressLine1: row['Address Line 1'] || '',
+      addressLine2: row['Address Line 2'] || '',
+      city: row['City'] || '',
+      state: row['State'] || '',
+      zipCode: row['ZIP Code'] || '',
+
+      // Emergency Contact
+      emergencyContactName: row['Emergency Contact Name'] || '',
+      emergencyContactPhone: row['Emergency Contact Phone'] || '',
+      emergencyContactRelationship: row['Emergency Contact Relationship'] || '',
+
+      // Employment Details
+      badgeNumber: row['Badge Number'],
+      position: row['Position'],
+      subsidiary: row['Subsidiary'] || '',
+      employmentStatus: row['Status'] === 'Active' ? 'Y' : 'N',
+      hireDate: row['Hire Date'] || '',
+      employmentType: row['Employment Type'] || '',
+      shift: row['Shift'] || '',
+      payRate: row['Pay Rate'] || '',
+      benefitsEligible: row['Benefits Eligible'] === 'Y',
+      salesTerritory: row['Sales Territory'] || '',
+      projectCategory: row['Project Category'] || '',
+      wcCode: row['WC Code'] ? parseInt(row['WC Code']) : undefined,
+
+      // Citizenship & Work Authorization
+      visaExpiry: row['Visa/Work Authorization Expiry'] || '',
+
+      // Compensation & Benefits
+      ssn: row['SSN'] || '',
+      ptoDays: row['PTO Days'] || '',
+      healthInsurance: row['Health Insurance'] || '',
+      has401k: row['401(k) Enrollment'] || '',
+      lifeBeneficiaries: row['Life Insurance Beneficiaries'] || '',
+
+      // Tax & Payroll Information
+      paymentMethod: row['Payment Method'] || '',
+      taxFilingStatus: row['Tax Filing Status'] || '',
+      w4Exemptions: row['W-4 Exemptions'] || '',
+      additionalFedWithhold: row['Additional Federal Withholding'] || '',
+      additionalStateWithhold: row['Additional State Withholding'] || '',
+
+      // Banking & Direct Deposit
+      bankName: row['Bank Name'] || '',
+      bankAccountName: row['Account Holder Name'] || '',
+      bankAccountType: row['Account Type'] || '',
+      bankRouting: row['Routing Number'] || '',
+      bankAccountNumber: row['Account Number'] || '',
+
+      // Dependents & Beneficiaries
+      dependentNames: splitArray(row['Dependent Names']),
+      dependentSsns: splitArray(row['Dependent SSNs']),
+      dependentRelationships: splitArray(row['Dependent Relationships']),
+
+      // Education & Skills
+      educationLevel: row['Education Level'] || '',
+      schoolName: row['School'] || '',
+      graduationYear: row['Graduation Year'] || '',
+      fieldsOfStudy: splitArray(row['Fields of Study']),
+      skills: splitArray(row['Skills']),
+      certifications: splitArray(row['Certifications']),
+      skillsLevel: row['Skills Level'] || '',
+
+      // Training & Compliance
+      requiredTrainingStatus: row['Required Training Status'] || '',
+      safetyTrainingStatus: row['Safety Training Status'] || '',
+      complianceTrainingStatus: row['Compliance Training Status'] || '',
+      trainingDate: row['Training Completion Date'] || '',
+      nextTrainingDue: row['Next Training Due'] || '',
+      trainingNotes: row['Training Notes'] || '',
+
+      // IT & Equipment
+      softwareExperience: splitArray(row['Software Experience']),
+      equipmentAssigned: splitArray(row['Equipment Assigned']),
+      equipmentStatus: row['Equipment Status'] || '',
+      equipmentReturn: row['Equipment Return Tracking'] || '',
+      softwareAccess: splitArray(row['Software Access']),
+      accessPermissions: splitArray(row['Access Permissions']),
+      accessLevel: row['Access Level'] || '',
+      securityClearance: row['Security Clearance'] || '',
+      networkStatus: row['Network Status'] || '',
+      vpnAccess: row['VPN Access'] === 'Y',
+      remoteAccess: row['Remote Access Approved'] === 'Y',
+
+      // Vehicle & Licensing
+      driversLicenseExpiry: row["Driver's License Expiry"] || '',
+      autoInsuranceExpiry: row['Auto Insurance Expiry'] || '',
+
+      // Performance & Reviews
+      reviewDates: splitArray(row['Performance Review Dates']),
+      terminationDate: row['Termination Date'] || '',
+      rehireEligible: row['Rehire Eligible'] === 'Y',
+
+      // Additional Information
+      additionalInfo: row['Notes'] || '',
+    };
+  };
+
   // Handle import submission
-  const handleSubmitImport = () => {
+  const handleSubmitImport = async () => {
     const hasErrors = validationErrors.some(e => e.type === 'error');
     if (hasErrors) {
       alert('Please fix all errors before importing.');
       return;
     }
 
-    // TODO: Send data to backend API
-    alert(`Import successful!\n\n${importData.length} employees will be added/updated.\n\n${validationErrors.length > 0 ? 'Note: Some warnings were found but import can proceed.' : 'No issues found.'}`);
+    setIsImporting(true);
+    setImportProgress({ current: 0, total: importData.length });
 
-    // Reset
-    setImportData([]);
-    setValidationErrors([]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    const results = {
+      success: 0,
+      failed: 0,
+      errors: [] as string[],
+    };
+
+    try {
+      // Process imports in batches for better UX
+      for (let i = 0; i < importData.length; i++) {
+        const row = importData[i];
+        setImportProgress({ current: i + 1, total: importData.length });
+
+        try {
+          const employeeData = mapRowToAPIFormat(row);
+
+          // Check if employee exists by badge number
+          const existingEmployee = employees.find(e => e.badgeNumber === row['Badge Number']);
+
+          if (existingEmployee) {
+            // Update existing employee
+            await api.updateEmployee(existingEmployee.bitrixId, employeeData);
+          } else {
+            // Create new employee (requires additional logic - needs Bitrix24 item creation)
+            // For now, we only support updates
+            throw new Error('Creating new employees via import is not yet supported. Please add new employees manually first.');
+          }
+
+          results.success++;
+        } catch (error: any) {
+          results.failed++;
+          const errorMsg = `Row ${i + 2} (${row['First Name']} ${row['Last Name']}): ${error.message || 'Unknown error'}`;
+          results.errors.push(errorMsg);
+          console.error(`Import error for row ${i + 2}:`, error);
+        }
+      }
+
+      setImportResults(results);
+
+      // If all succeeded, close modal after showing success
+      if (results.failed === 0) {
+        setTimeout(() => {
+          setImportData([]);
+          setValidationErrors([]);
+          setImportResults(null);
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+          onImportComplete();
+          onClose();
+        }, 2000);
+      }
+    } catch (error: any) {
+      alert(`Import failed: ${error.message}`);
+    } finally {
+      setIsImporting(false);
     }
-    onImportComplete();
-    onClose();
   };
 
   const errorCount = validationErrors.filter(e => e.type === 'error').length;
@@ -526,116 +695,231 @@ export default function ImportExportModal({
   const canSubmit = importData.length > 0 && errorCount === 0;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-5xl w-full max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black bg-opacity-60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[92vh] flex flex-col border border-gray-200">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-            <ArrowUpDown className="w-6 h-6 text-hartzell-blue" />
-            Import / Export Employees
-          </h2>
+        <div className="flex items-center justify-between px-8 py-6 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-hartzell-blue/10 rounded-lg">
+              <FileSpreadsheet className="w-7 h-7 text-hartzell-blue" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-gray-900">Data Management</h2>
+              <p className="text-sm text-gray-600 mt-0.5">Import or export employee records</p>
+            </div>
+          </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            disabled={isImporting}
+            className="text-gray-400 hover:text-gray-600 transition-colors p-2 hover:bg-gray-100 rounded-lg disabled:opacity-50"
           >
             <X className="w-6 h-6" />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-200">
+        <div className="flex border-b border-gray-200 bg-gray-50/50">
           <button
             onClick={() => setActiveTab('export')}
-            className={`flex-1 px-6 py-3 text-sm font-medium transition-colors ${
+            disabled={isImporting}
+            className={`flex-1 px-8 py-4 text-sm font-semibold transition-all relative disabled:opacity-50 ${
               activeTab === 'export'
-                ? 'text-hartzell-blue border-b-2 border-hartzell-blue'
-                : 'text-gray-600 hover:text-gray-900'
+                ? 'text-hartzell-blue bg-white border-b-3 border-hartzell-blue'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/50'
             }`}
           >
-            <Download className="w-4 h-4 inline mr-2" />
-            Export
+            <div className="flex items-center justify-center gap-2">
+              <Download className="w-4 h-4" />
+              <span>Export Data</span>
+            </div>
           </button>
           <button
             onClick={() => setActiveTab('import')}
-            className={`flex-1 px-6 py-3 text-sm font-medium transition-colors ${
+            disabled={isImporting}
+            className={`flex-1 px-8 py-4 text-sm font-semibold transition-all relative disabled:opacity-50 ${
               activeTab === 'import'
-                ? 'text-hartzell-blue border-b-2 border-hartzell-blue'
-                : 'text-gray-600 hover:text-gray-900'
+                ? 'text-hartzell-blue bg-white border-b-3 border-hartzell-blue'
+                : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100/50'
             }`}
           >
-            <Upload className="w-4 h-4 inline mr-2" />
-            Import
+            <div className="flex items-center justify-center gap-2">
+              <Upload className="w-4 h-4" />
+              <span>Import Data</span>
+            </div>
           </button>
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-8">
           {activeTab === 'export' ? (
             // Export Tab
-            <div className="text-center py-12">
-              <Download className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Export Employee Data
-              </h3>
-              <p className="text-gray-600 mb-6">
-                Download current employee list as Excel file
-              </p>
-              <button
-                onClick={handleExport}
-                className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium"
-              >
-                <Download className="w-4 h-4 inline mr-2" />
-                Download Excel File
-              </button>
+            <div className="max-w-2xl mx-auto">
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-xl p-8 text-center">
+                <div className="inline-flex p-4 bg-green-100 rounded-full mb-6">
+                  <Database className="w-12 h-12 text-green-600" />
+                </div>
+                <h3 className="text-xl font-bold text-gray-900 mb-3">
+                  Export Employee Database
+                </h3>
+                <p className="text-gray-700 mb-2 font-medium">
+                  Complete data export with {employees.length} employees
+                </p>
+                <p className="text-sm text-gray-600 mb-8">
+                  Includes all 100+ employee fields: personal info, employment details, benefits, training, equipment, and more
+                </p>
+
+                <button
+                  onClick={handleExport}
+                  className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all font-semibold shadow-lg hover:shadow-xl transform hover:scale-105"
+                >
+                  <Download className="w-5 h-5" />
+                  Download Excel File
+                </button>
+
+                <div className="mt-8 pt-6 border-t border-green-200">
+                  <div className="flex items-start gap-2 text-sm text-gray-600">
+                    <Shield className="w-4 h-4 text-green-600 mt-0.5 flex-shrink-0" />
+                    <p className="text-left">
+                      Exported data includes sensitive information (SSN, banking details). Handle with care and follow data security protocols.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           ) : (
             // Import Tab
             <div className="space-y-6">
-              {/* Template Download */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                  <div className="flex-1">
-                    <h4 className="text-sm font-semibold text-blue-900 mb-1">
-                      First time importing?
-                    </h4>
-                    <p className="text-sm text-blue-800 mb-3">
-                      Download the template to see the required format and field types.
-                    </p>
-                    <button
-                      onClick={handleDownloadTemplate}
-                      className="text-sm px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                    >
-                      <Download className="w-4 h-4 inline mr-2" />
-                      Download Template
-                    </button>
+              {/* Import Progress */}
+              {isImporting && (
+                <div className="bg-hartzell-blue/5 border-2 border-hartzell-blue rounded-xl p-6">
+                  <div className="flex items-center gap-4 mb-4">
+                    <Loader2 className="w-6 h-6 text-hartzell-blue animate-spin" />
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-gray-900 mb-1">
+                        Importing Employee Data...
+                      </h4>
+                      <p className="text-sm text-gray-600">
+                        Processing {importProgress.current} of {importProgress.total} employees
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-bold text-hartzell-blue">
+                        {Math.round((importProgress.current / importProgress.total) * 100)}%
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                    <div
+                      className="bg-gradient-to-r from-hartzell-blue to-blue-600 h-full transition-all duration-300 rounded-full"
+                      style={{ width: `${(importProgress.current / importProgress.total) * 100}%` }}
+                    />
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* File Upload */}
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-hartzell-blue transition-colors">
-                <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h4 className="text-lg font-medium text-gray-900 mb-2">
-                  Upload Employee Data
-                </h4>
-                <p className="text-sm text-gray-600 mb-4">
-                  Select an Excel file (.xlsx, .xls) with employee data
-                </p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".xlsx,.xls"
-                  onChange={handleFileUpload}
-                  className="hidden"
-                />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-6 py-2 bg-hartzell-blue text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
-                >
-                  Select File
-                </button>
-              </div>
+              {/* Import Results */}
+              {importResults && (
+                <div className={`border-2 rounded-xl p-6 ${
+                  importResults.failed === 0
+                    ? 'bg-green-50 border-green-300'
+                    : 'bg-yellow-50 border-yellow-300'
+                }`}>
+                  <div className="flex items-start gap-4">
+                    {importResults.failed === 0 ? (
+                      <CheckCircle className="w-8 h-8 text-green-600 flex-shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-8 h-8 text-yellow-600 flex-shrink-0" />
+                    )}
+                    <div className="flex-1">
+                      <h4 className="font-bold text-lg text-gray-900 mb-2">
+                        {importResults.failed === 0 ? 'Import Completed Successfully!' : 'Import Completed with Errors'}
+                      </h4>
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="bg-white rounded-lg p-3 border border-green-200">
+                          <p className="text-sm text-gray-600">Successfully Imported</p>
+                          <p className="text-2xl font-bold text-green-600">{importResults.success}</p>
+                        </div>
+                        {importResults.failed > 0 && (
+                          <div className="bg-white rounded-lg p-3 border border-red-200">
+                            <p className="text-sm text-gray-600">Failed</p>
+                            <p className="text-2xl font-bold text-red-600">{importResults.failed}</p>
+                          </div>
+                        )}
+                      </div>
+                      {importResults.errors.length > 0 && (
+                        <div className="bg-white rounded-lg p-4 border border-yellow-200 max-h-48 overflow-y-auto">
+                          <p className="font-semibold text-sm text-gray-900 mb-2">Errors:</p>
+                          <ul className="text-sm text-gray-700 space-y-1">
+                            {importResults.errors.map((error, i) => (
+                              <li key={i} className="flex items-start gap-2">
+                                <span className="text-red-500">•</span>
+                                <span>{error}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {!isImporting && !importResults && (
+                <>
+                  {/* Template Download */}
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-6">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 bg-blue-100 rounded-lg">
+                        <AlertCircle className="w-6 h-6 text-blue-600" />
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="font-bold text-blue-900 mb-2">
+                          First time importing?
+                        </h4>
+                        <p className="text-sm text-blue-800 mb-4">
+                          Download our Excel template to see the required format with all 100+ employee fields properly structured.
+                        </p>
+                        <button
+                          onClick={handleDownloadTemplate}
+                          className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-semibold shadow-md hover:shadow-lg transform hover:scale-105"
+                        >
+                          <Download className="w-4 h-4" />
+                          Download Template
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* File Upload */}
+                  <div className="border-3 border-dashed border-gray-300 rounded-xl p-12 text-center hover:border-hartzell-blue hover:bg-gray-50/50 transition-all group">
+                    <div className="inline-flex p-4 bg-gray-100 group-hover:bg-hartzell-blue/10 rounded-full mb-4 transition-colors">
+                      <Upload className="w-10 h-10 text-gray-400 group-hover:text-hartzell-blue transition-colors" />
+                    </div>
+                    <h4 className="text-xl font-bold text-gray-900 mb-2">
+                      Upload Employee Data
+                    </h4>
+                    <p className="text-sm text-gray-600 mb-6 max-w-md mx-auto">
+                      Select an Excel file (.xlsx, .xls) with employee data. File will be validated before import.
+                    </p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".xlsx,.xls"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      disabled={isImporting}
+                    />
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isImporting}
+                      className="inline-flex items-center gap-2 px-8 py-3 bg-hartzell-blue text-white rounded-lg hover:bg-blue-700 transition-all font-semibold shadow-md hover:shadow-lg transform hover:scale-105 disabled:opacity-50"
+                    >
+                      <FileSpreadsheet className="w-5 h-5" />
+                      Select Excel File
+                    </button>
+                  </div>
+                </>
+              )}
 
               {/* Validation Results */}
               {isValidating && (
@@ -765,39 +1049,46 @@ export default function ImportExportModal({
         </div>
 
         {/* Footer */}
-        {activeTab === 'import' && importData.length > 0 && !isValidating && (
-          <div className="border-t border-gray-200 p-6 bg-gray-50">
+        {activeTab === 'import' && importData.length > 0 && !isValidating && !isImporting && !importResults && (
+          <div className="border-t-2 border-gray-200 px-8 py-6 bg-gradient-to-r from-gray-50 to-white">
             <div className="flex items-center justify-between">
-              <div className="text-sm">
+              <div className="flex items-center gap-3">
                 {errorCount > 0 ? (
-                  <p className="text-red-700 font-medium">
-                    <AlertCircle className="w-4 h-4 inline mr-1" />
-                    Fix {errorCount} error{errorCount !== 1 ? 's' : ''} before importing
-                  </p>
+                  <div className="flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-200 rounded-lg">
+                    <AlertCircle className="w-5 h-5 text-red-600" />
+                    <p className="text-sm font-semibold text-red-700">
+                      {errorCount} error{errorCount !== 1 ? 's' : ''} must be fixed
+                    </p>
+                  </div>
                 ) : warningCount > 0 ? (
-                  <p className="text-yellow-700 font-medium">
-                    <AlertTriangle className="w-4 h-4 inline mr-1" />
-                    {warningCount} warning{warningCount !== 1 ? 's' : ''} found - review before importing
-                  </p>
+                  <div className="flex items-center gap-2 px-4 py-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <AlertTriangle className="w-5 h-5 text-yellow-600" />
+                    <p className="text-sm font-semibold text-yellow-700">
+                      {warningCount} warning{warningCount !== 1 ? 's' : ''} found
+                    </p>
+                  </div>
                 ) : (
-                  <p className="text-green-700 font-medium">
-                    <CheckCircle className="w-4 h-4 inline mr-1" />
-                    Ready to import
-                  </p>
+                  <div className="flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 rounded-lg">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                    <p className="text-sm font-semibold text-green-700">
+                      Validation passed - ready to import
+                    </p>
+                  </div>
                 )}
               </div>
               <div className="flex gap-3">
                 <button
                   onClick={onClose}
-                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  className="px-6 py-2.5 text-gray-700 border-2 border-gray-300 rounded-lg hover:bg-gray-100 transition-all font-semibold"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSubmitImport}
                   disabled={!canSubmit}
-                  className="px-6 py-2 bg-hartzell-blue text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-2 px-8 py-2.5 bg-gradient-to-r from-hartzell-blue to-blue-600 text-white rounded-lg hover:from-blue-700 hover:to-blue-700 transition-all font-semibold shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                 >
+                  <Database className="w-5 h-5" />
                   Import {importData.length} Employee{importData.length !== 1 ? 's' : ''}
                 </button>
               </div>

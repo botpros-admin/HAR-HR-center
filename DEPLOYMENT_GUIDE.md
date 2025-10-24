@@ -1,7 +1,50 @@
-# 🚀 Hartzell HR Center - Deployment Guide
+# 🚀 Hartzell HR Center - Complete Deployment Guide
 
-**Last Updated:** October 12, 2025
+**Last Updated:** January 2025
 **Status:** ✅ DEPLOYED AND OPERATIONAL
+
+---
+
+## 🚨 CRITICAL DEPLOYMENT RULES - READ THIS FIRST
+
+### Frontend Deployment - THE ONLY CORRECT METHOD
+
+**ALWAYS use this command:**
+```bash
+cd /mnt/c/Users/Agent/Desktop/HR\ Center/frontend
+npm run deploy
+```
+
+### ❌ NEVER DO THIS ❌
+
+```bash
+# WRONG - deploys to wrong branch
+wrangler pages deploy out --branch=production
+
+# WRONG - no cache cleaning
+npm run build && wrangler pages deploy out
+
+# WRONG - any manual wrangler command
+wrangler pages deploy ...
+```
+
+**WHY THIS MATTERS:**
+- Custom domain `app.hartzell.work` is ONLY configured for the `main` branch
+- Deploying to any other branch creates orphaned deployments users can't access
+- The `npm run deploy` script automatically:
+  - ✅ Cleans all caches (prevents stale builds)
+  - ✅ Deploys to `main` branch (the ONLY branch that serves the custom domain)
+  - ✅ Verifies responsive design is correct
+  - ✅ Commits dirty files (prevents deployment failures)
+
+### Backend Deployment - Always Correct
+
+```bash
+cd /mnt/c/Users/Agent/Desktop/HR\ Center/cloudflare-app
+wrangler deploy
+```
+
+**This is correct.** Backend has no branch issues.
 
 ---
 
@@ -11,9 +54,10 @@
 2. [Production URLs](#production-urls)
 3. [Infrastructure Overview](#infrastructure-overview)
 4. [Deployment Procedures](#deployment-procedures)
-5. [Testing Your Deployment](#testing-your-deployment)
-6. [Common Operations](#common-operations)
-7. [Troubleshooting](#troubleshooting)
+5. [Deployment Safeguards](#deployment-safeguards)
+6. [Testing Your Deployment](#testing-your-deployment)
+7. [Common Operations](#common-operations)
+8. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -24,14 +68,13 @@
 **Backend (Cloudflare Workers)** ✅
 - Worker: `hartzell-hr-center-production`
 - Routes: `hartzell.work/api/*`
-- Current Version: `e702eb84-6e35-498f-899b-4961d876fda9`
-- Deployed: October 12, 2025
+- Deployed: January 2025
 
 **Frontend (Cloudflare Pages)** ✅
 - Project: `hartzell-hr-frontend`
 - Custom Domain: `app.hartzell.work`
-- Latest Deployment: `ba780ac1.hartzell-hr-frontend.pages.dev`
-- Deployed: October 11, 2025
+- Branch: `main` (ONLY branch that serves custom domain)
+- Deployed: January 2025
 
 **Database (D1)** ✅
 - Database: `hartzell_hr_prod`
@@ -51,6 +94,7 @@
 **Integrations** ✅
 - Bitrix24: REST API via webhook (entity type 1054)
 - hCaptcha: Tier 3 authentication
+- Resend: Email delivery
 
 ---
 
@@ -58,7 +102,7 @@
 
 ### Employee Portal (Frontend)
 - **Custom Domain:** https://app.hartzell.work ✅
-- **Pages URL:** https://ba780ac1.hartzell-hr-frontend.pages.dev
+- **Important:** Only `main` branch deployments are accessible via this domain
 
 ### Backend API
 - **Production:** https://hartzell.work/api/* ✅
@@ -85,6 +129,7 @@
 - `BITRIX24_WEBHOOK_URL` - Bitrix24 REST API webhook
 - `SESSION_SECRET` - 32-byte hex string for session encryption
 - `HCAPTCHA_SECRET` - hCaptcha secret key
+- `RESEND_API_KEY` - Resend email API key
 
 **Environment Variables (wrangler.toml):**
 ```toml
@@ -100,7 +145,7 @@ RATE_LIMIT_WINDOW = "900"          # 15 minutes
 2. `login_attempts` - Rate limiting
 3. `admin_users` - Admin authentication
 4. `employee_cache` - Bitrix24 data cache
-5. `signature_requests` - Placeholder for future
+5. `signature_requests` - E-signature tracking
 6. `templates` - PDF templates
 7. `assignments` - Document assignments
 
@@ -114,6 +159,7 @@ RATE_LIMIT_WINDOW = "900"          # 15 minutes
 - Framework: Next.js 14 (Static Export)
 - Build Command: `npm run build`
 - Output Directory: `out/`
+- Branch: `main` (CRITICAL - only branch with custom domain)
 
 ---
 
@@ -153,14 +199,11 @@ curl -I https://hartzell.work/api/auth/session
 HTTP/2 401 (or 200 if you have a valid session)
 ```
 
+---
+
 ### Frontend Deployment (Pages) - MANDATORY METHOD
 
 **⚠️ CRITICAL: ONLY USE THIS DEPLOYMENT METHOD ⚠️**
-
-**DO NOT:**
-- ❌ Use `wrangler pages deploy` directly
-- ❌ Deploy to any branch other than `main`
-- ❌ Skip the deploy script
 
 **Prerequisites:**
 - Located in `/frontend` directory
@@ -176,15 +219,17 @@ npm run deploy
 **Why This Is The ONLY Method:**
 - ✅ Deploys to `main` branch (the ONLY branch that serves app.hartzell.work)
 - ✅ Cleans all caches automatically (prevents stale builds)
+- ✅ Verifies responsive design is correct
+- ✅ Builds fresh every time
 - ✅ Single command deployment
-- ✅ Always deploys fresh build
-- ✅ Consistent process every time
+- ✅ Blocks deployment if verification fails
 
 **What Happens Automatically:**
 1. Cleans all build caches (`.next`, `out`, `node_modules/.cache`)
 2. Builds Next.js static export to `./out` directory
-3. Deploys to Cloudflare Pages (`hartzell-hr-frontend` project)
-4. Updates custom domain `app.hartzell.work` automatically
+3. **Verifies responsive design** (checks for `md:grid-cols` classes)
+4. Deploys to Cloudflare Pages (`hartzell-hr-frontend` project)
+5. Updates custom domain `app.hartzell.work` automatically
 
 **Verify Deployment:**
 ```bash
@@ -199,6 +244,28 @@ curl -I https://app.hartzell.work/
 ```
 HTTP/2 200
 ```
+
+**After Deployment - Verify Mobile Responsive Design:**
+
+Open: `https://app.hartzell.work/admin/employees/detail/?id=58`
+
+**Using Chrome DevTools:**
+1. Press `F12`
+2. Click device toolbar (📱 icon) or press `Ctrl+Shift+M`
+3. Set to `iPhone 12 Pro` or any mobile device
+4. **Expected**: All form fields show **1 per row** (single column)
+
+**On Real Phone:**
+- Open URL on your phone
+- **Expected**: All fields are stacked vertically (not side-by-side)
+
+**If Mobile Still Shows 2 Columns:**
+1. Hard refresh browser (`Ctrl+Shift+R`)
+2. Clear browser cache
+3. Open in incognito/private window
+4. Wait 2-3 minutes for Cloudflare cache to update
+
+---
 
 ### Database Migrations (D1)
 
@@ -219,6 +286,8 @@ wrangler d1 execute hartzell_hr_prod --command="ALTER TABLE tablename ADD COLUMN
 # Option 2: SQL file
 wrangler d1 execute hartzell_hr_prod --file=path/to/migration.sql
 ```
+
+---
 
 ### Secrets Management
 
@@ -250,6 +319,52 @@ wrangler secret put BITRIX24_WEBHOOK_URL
 wrangler secret put HCAPTCHA_SECRET
 # Paste your hCaptcha secret key
 ```
+
+**Update Resend API Key:**
+```bash
+wrangler secret put RESEND_API_KEY
+# Paste your Resend API key
+```
+
+---
+
+## 🛡️ Deployment Safeguards
+
+### Automated Verification System
+
+The frontend deployment includes automated verification to prevent responsive design and build issues.
+
+**What Gets Verified:**
+
+| Check | What it Validates | Why Important |
+|-------|------------------|---------------|
+| **Source Code** | `src/app/admin/employees/detail/page.tsx` contains `md:grid-cols` | Confirms you didn't accidentally revert changes |
+| **JavaScript Bundles** | All `.js` files in `out/_next/static/chunks` have responsive classes | Ensures build process didn't strip classes |
+| **Specific Page** | Admin employee detail page has `grid-cols-1 md:grid-cols-2 lg:grid-cols-3` pattern | Validates the exact page that had issues |
+| **CSS File** | CSS contains `md:grid-cols-2` and `min-width:768px` | Confirms Tailwind generated responsive styles |
+| **Config** | Tailwind config is valid | Prevents build configuration errors |
+
+**Manual Verification (if needed):**
+```bash
+npm run verify:responsive
+```
+
+**Emergency Override (use with extreme caution):**
+```bash
+npm run deploy:force  # Skips verification
+```
+
+⚠️ **WARNING**: Only use force deploy if you're 100% confident the build is correct.
+
+---
+
+### Responsive Breakpoints Reference
+
+| Screen Size | Breakpoint | Grid Columns | Example Devices |
+|------------|------------|--------------|-----------------|
+| Mobile | < 768px | **1 column** | iPhone, Android phones (portrait) |
+| Tablet | 768-1023px | **2 columns** | iPad, tablets (portrait) |
+| Desktop | ≥ 1024px | **3 columns** | Laptops, desktops, tablets (landscape) |
 
 ---
 
@@ -307,8 +422,8 @@ wrangler d1 execute hartzell_hr_prod --command="SELECT COUNT(*) FROM employee_ca
 ### 4. Test Bitrix24 Integration
 
 ```bash
-# Test direct Bitrix24 API call (replace with actual webhook URL)
-curl "https://hartzell.app/rest/1/YOUR_WEBHOOK/crm.item.list?entityTypeId=1054" | jq
+# Test direct Bitrix24 API call
+curl "https://hartzell.app/rest/1/jp689g5yfvre9pvd/crm.item.list?entityTypeId=1054" | jq
 ```
 
 **Expected:** JSON response with employee list
@@ -453,7 +568,7 @@ wrangler pages deployment list --project-name=hartzell-hr-frontend
 # Redeploy specific commit
 git checkout [COMMIT_HASH]
 cd frontend
-npm run deploy
+npm run deploy  # IMPORTANT: Use npm run deploy, not raw wrangler command
 git checkout main
 ```
 
@@ -487,6 +602,8 @@ git checkout main
    npm run deploy
    ```
 
+---
+
 ### Issue: "Too Many Attempts" / Rate Limited
 
 **Symptoms:**
@@ -506,6 +623,8 @@ git checkout main
    ```bash
    wrangler d1 execute hartzell_hr_prod --command="DELETE FROM login_attempts"
    ```
+
+---
 
 ### Issue: Session Expires Immediately
 
@@ -529,6 +648,8 @@ git checkout main
 3. **Verify session expiry time:**
    - Check `wrangler.toml` → `SESSION_MAX_AGE = "28800"` (8 hours)
 
+---
+
 ### Issue: Employee Not Found
 
 **Symptoms:**
@@ -551,6 +672,8 @@ git checkout main
    - Login as admin at https://app.hartzell.work/admin
    - Click "Refresh Employees" button
 
+---
+
 ### Issue: CAPTCHA Not Working
 
 **Symptoms:**
@@ -571,6 +694,8 @@ git checkout main
 3. **Test hCaptcha directly:**
    - Visit https://www.hcaptcha.com/
    - Verify site/secret keys are valid
+
+---
 
 ### Issue: Database Queries Failing
 
@@ -601,9 +726,34 @@ git checkout main
 
 ---
 
+### Issue: Verification Fails During Deployment
+
+**Symptoms:**
+- "Verification failed" error
+- Deployment blocked
+
+**Solutions:**
+
+1. **Run verification manually to see what failed:**
+   ```bash
+   npm run verify:responsive
+   ```
+
+2. **Check if responsive classes are in source code:**
+   ```bash
+   grep -r "md:grid-cols" src/app/admin/employees/detail/
+   ```
+
+3. **Force deploy (only if verification is giving false positive):**
+   ```bash
+   npm run deploy:force
+   ```
+
+---
+
 ## 📊 Deployment Statistics
 
-### Resource Usage (39 Employees)
+### Resource Usage
 
 | Resource | Daily Usage | Monthly Limit (Free Tier) | Status |
 |----------|-------------|---------------------------|--------|
@@ -617,37 +767,6 @@ git checkout main
 
 **Monthly Cost:** $0 (within free tier)
 
-### Code Statistics
-
-| Metric | Value |
-|--------|-------|
-| Backend (TypeScript) | ~1,200 lines |
-| Frontend (TypeScript/TSX) | ~2,500 lines |
-| Total Files | ~70 |
-| API Endpoints | 25+ |
-| Frontend Pages | 15+ |
-| Database Tables | 7 |
-
----
-
-## 🎯 Pre-Launch Checklist
-
-Before announcing to employees:
-
-- [x] Backend deployed to production
-- [x] Frontend deployed with custom domain
-- [x] Database initialized with schema
-- [x] All secrets configured
-- [x] Bitrix24 integration tested
-- [x] Authentication flow tested (3-tier)
-- [x] Rate limiting tested
-- [x] Admin dashboard functional
-- [x] Employee portal functional
-- [ ] Train HR staff on admin interface
-- [ ] Test with small group of employees
-- [ ] Prepare announcement email
-- [ ] Set up monitoring alerts (optional)
-
 ---
 
 ## 📞 Support Resources
@@ -655,6 +774,7 @@ Before announcing to employees:
 **Documentation:**
 - `README.md` - System overview
 - `SPECIFICATION.md` - Complete technical specification
+- `CLAUDE.md` - AI agent deployment instructions
 - `cloudflare-app/README.md` - Backend architecture
 - `frontend/README.md` - Frontend architecture
 
@@ -680,11 +800,14 @@ Before announcing to employees:
 - ✅ Employee Portal: https://app.hartzell.work
 - ✅ Admin Dashboard: https://app.hartzell.work/admin
 - ✅ Monthly Cost: $0 (Cloudflare free tier)
-- ✅ 39 employees ready to use the system
+- ✅ Multi-tier authentication system
+- ✅ Document e-signature workflow
+- ✅ Automated email notifications
+- ✅ Bitrix24 CRM integration
 
 **Status:** 🚀 **PRODUCTION**
 
 ---
 
-*Last Updated: October 12, 2025*
-*Deployment Version: 1.0.0*
+*Last Updated: January 2025*
+*Deployment Version: 2.0.0*

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Upload, FileText, Trash2, Edit, Eye, Plus, Search, Filter, MousePointer, Type, CheckSquare, Calendar, X, Save, Circle } from 'lucide-react';
+import { Upload, FileText, Trash2, Edit, Eye, Plus, Search, Filter, MousePointer, Type, CheckSquare, Calendar, X, Save, Circle, Settings } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Toast, ToastContainer } from '@/components/Toast';
@@ -105,10 +105,38 @@ export default function TemplatesPage() {
 
   const categories = [
     { value: 'all', label: 'All Categories' },
-    { value: 'onboarding', label: 'Onboarding' },
-    { value: 'tax', label: 'Tax Forms' },
-    { value: 'benefits', label: 'Benefits' },
-    { value: 'policy', label: 'Policies' },
+    // Tax & Onboarding
+    { value: 'W-4', label: 'W-4 Form' },
+    { value: 'I-9', label: 'I-9 Form' },
+    { value: 'Multiple Jobs Worksheet', label: 'Multiple Jobs Worksheet' },
+    { value: 'Deductions Worksheet', label: 'Deductions Worksheet' },
+    // Legal & Compliance
+    { value: 'NDA', label: 'NDA' },
+    { value: 'Non-Compete', label: 'Non-Compete' },
+    { value: 'Handbook', label: 'Handbook' },
+    { value: 'Background Check', label: 'Background Check' },
+    { value: 'Drug Test', label: 'Drug Test' },
+    { value: 'Hiring Paperwork', label: 'Hiring Paperwork' },
+    // Benefits & Payroll
+    { value: 'Direct Deposit', label: 'Direct Deposit' },
+    { value: '401k Enrollment', label: '401k Enrollment' },
+    { value: 'Health Insurance', label: 'Health Insurance' },
+    // Identity & Verification
+    { value: 'Drivers License', label: 'Driver\'s License' },
+    { value: 'Auto Insurance', label: 'Auto Insurance' },
+    { value: 'Work Visa', label: 'Work Visa' },
+    { value: 'Profile Photo', label: 'Profile Photo' },
+    // Training & Development
+    { value: 'Professional Certifications', label: 'Professional Certifications' },
+    { value: 'Training Completion', label: 'Training Completion' },
+    { value: 'Training Documents', label: 'Training Documents' },
+    { value: 'Training Records', label: 'Training Records' },
+    { value: 'Skills Assessment', label: 'Skills Assessment' },
+    // General
+    { value: 'onboarding', label: 'Onboarding (General)' },
+    { value: 'tax', label: 'Tax Forms (General)' },
+    { value: 'benefits', label: 'Benefits (General)' },
+    { value: 'policy', label: 'Policies (General)' },
     { value: 'other', label: 'Other' }
   ];
 
@@ -399,6 +427,34 @@ function TemplateCard({
   };
 
   const categoryColors: Record<string, string> = {
+    // Tax & Onboarding Documents
+    'W-4': 'bg-purple-100 text-purple-800',
+    'I-9': 'bg-purple-100 text-purple-800',
+    'Multiple Jobs Worksheet': 'bg-violet-100 text-violet-800',
+    'Deductions Worksheet': 'bg-violet-100 text-violet-800',
+    // Legal & Compliance Documents
+    'NDA': 'bg-red-100 text-red-800',
+    'Non-Compete': 'bg-red-100 text-red-800',
+    'Handbook': 'bg-blue-100 text-blue-800',
+    'Background Check': 'bg-orange-100 text-orange-800',
+    'Drug Test': 'bg-pink-100 text-pink-800',
+    'Hiring Paperwork': 'bg-rose-100 text-rose-800',
+    // Benefits & Payroll Documents
+    'Direct Deposit': 'bg-green-100 text-green-800',
+    '401k Enrollment': 'bg-emerald-100 text-emerald-800',
+    'Health Insurance': 'bg-lime-100 text-lime-800',
+    // Identity & Verification Documents
+    'Drivers License': 'bg-cyan-100 text-cyan-800',
+    'Auto Insurance': 'bg-indigo-100 text-indigo-800',
+    'Work Visa': 'bg-teal-100 text-teal-800',
+    'Profile Photo': 'bg-sky-100 text-sky-800',
+    // Training & Development Documents
+    'Professional Certifications': 'bg-amber-100 text-amber-800',
+    'Training Completion': 'bg-yellow-100 text-yellow-800',
+    'Training Documents': 'bg-orange-100 text-orange-800',
+    'Training Records': 'bg-amber-100 text-amber-800',
+    'Skills Assessment': 'bg-yellow-100 text-yellow-800',
+    // General Categories
     onboarding: 'bg-blue-100 text-blue-800',
     tax: 'bg-purple-100 text-purple-800',
     benefits: 'bg-green-100 text-green-800',
@@ -407,6 +463,34 @@ function TemplateCard({
   };
 
   const categoryLabels: Record<string, string> = {
+    // Tax & Onboarding Documents
+    'W-4': 'W-4',
+    'I-9': 'I-9',
+    'Multiple Jobs Worksheet': 'Multiple Jobs',
+    'Deductions Worksheet': 'Deductions',
+    // Legal & Compliance Documents
+    'NDA': 'NDA',
+    'Non-Compete': 'Non-Compete',
+    'Handbook': 'Handbook',
+    'Background Check': 'Background',
+    'Drug Test': 'Drug Test',
+    'Hiring Paperwork': 'Hiring',
+    // Benefits & Payroll Documents
+    'Direct Deposit': 'Direct Deposit',
+    '401k Enrollment': '401k',
+    'Health Insurance': 'Health Ins.',
+    // Identity & Verification Documents
+    'Drivers License': 'Driver\'s License',
+    'Auto Insurance': 'Auto Ins.',
+    'Work Visa': 'Work Visa',
+    'Profile Photo': 'Profile Photo',
+    // Training & Development Documents
+    'Professional Certifications': 'Certifications',
+    'Training Completion': 'Training Done',
+    'Training Documents': 'Training Docs',
+    'Training Records': 'Training Rec.',
+    'Skills Assessment': 'Skills Test',
+    // General Categories
     onboarding: 'Onboarding',
     tax: 'Tax Forms',
     benefits: 'Benefits',
@@ -576,7 +660,7 @@ function UploadModal({
   const [formData, setFormData] = useState({
     title: '',
     description: '',
-    category: 'onboarding',
+    category: 'W-4',
     requiresSignature: true
   });
   const [file, setFile] = useState<File | null>(null);
@@ -738,11 +822,45 @@ function UploadModal({
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-hartzell-blue focus:border-transparent"
               required
             >
-              <option value="onboarding">Onboarding</option>
-              <option value="tax">Tax Forms</option>
-              <option value="benefits">Benefits</option>
-              <option value="policy">Policies</option>
-              <option value="other">Other</option>
+              <optgroup label="Tax & Onboarding Documents">
+                <option value="W-4">W-4 Form</option>
+                <option value="I-9">I-9 Form</option>
+                <option value="Multiple Jobs Worksheet">Multiple Jobs Worksheet</option>
+                <option value="Deductions Worksheet">Deductions Worksheet</option>
+              </optgroup>
+              <optgroup label="Legal & Compliance Documents">
+                <option value="NDA">NDA (Non-Disclosure Agreement)</option>
+                <option value="Non-Compete">Non-Compete Agreement</option>
+                <option value="Handbook">Employee Handbook</option>
+                <option value="Background Check">Background Check</option>
+                <option value="Drug Test">Drug Test</option>
+                <option value="Hiring Paperwork">Hiring Paperwork</option>
+              </optgroup>
+              <optgroup label="Benefits & Payroll Documents">
+                <option value="Direct Deposit">Direct Deposit Authorization</option>
+                <option value="401k Enrollment">401k Enrollment</option>
+                <option value="Health Insurance">Health Insurance</option>
+              </optgroup>
+              <optgroup label="Identity & Verification Documents">
+                <option value="Drivers License">Driver's License</option>
+                <option value="Auto Insurance">Auto Insurance</option>
+                <option value="Work Visa">Work Visa/Permit</option>
+                <option value="Profile Photo">Profile Photo</option>
+              </optgroup>
+              <optgroup label="Training & Development Documents">
+                <option value="Professional Certifications">Professional Certifications</option>
+                <option value="Training Completion">Training Completion</option>
+                <option value="Training Documents">Training Documents</option>
+                <option value="Training Records">Training Records</option>
+                <option value="Skills Assessment">Skills Assessment</option>
+              </optgroup>
+              <optgroup label="General Categories">
+                <option value="onboarding">Onboarding (General)</option>
+                <option value="tax">Tax Forms (General)</option>
+                <option value="benefits">Benefits (General)</option>
+                <option value="policy">Policies (General)</option>
+                <option value="other">Other</option>
+              </optgroup>
             </select>
           </div>
 
@@ -863,14 +981,46 @@ function FieldEditorModal({
   }>>([]);
   const [selectedSignerIndex, setSelectedSignerIndex] = useState<number>(0);
 
+  // Settings panel state
+  const [showSettings, setShowSettings] = useState(false);
+  const [metadataForm, setMetadataForm] = useState({
+    title: template.title,
+    description: template.description || '',
+    category: template.category,
+    requiresSignature: template.requiresSignature
+  });
+  const [settingsWorkflowConfig, setSettingsWorkflowConfig] = useState<DefaultSignerConfig>({ mode: 'single_signer' });
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+
   const isViewMode = mode === 'view';
   const allPagesLoaded = loadedPages.size === numPages && numPages > 0;
+
+  // Fetch employees for workflow configuration
+  const { data: employeesData } = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => api.getEmployees(),
+    enabled: showSettings // Only fetch when settings panel is open
+  });
+
+  // Get session for current admin name
+  const { data: sessionData } = useQuery({
+    queryKey: ['session'],
+    queryFn: () => api.getSession(),
+    enabled: showSettings // Only fetch when settings panel is open
+  });
+
+  const employees = employeesData?.employees || [];
+  const currentAdminName = sessionData?.session?.name || 'You';
+  const queryClient = useQueryClient();
 
   // Parse workflow config from template
   useEffect(() => {
     if (template.defaultSignerConfig) {
       try {
         const config = JSON.parse(template.defaultSignerConfig);
+        // Set workflow config for settings panel
+        setSettingsWorkflowConfig(config);
+
         if (config.mode === 'multi_signer' && config.signers) {
           const signerColors = [
             'bg-blue-600',    // Signer 1 (usually Employee)
@@ -1313,6 +1463,38 @@ function FieldEditorModal({
     }
   };
 
+  const handleSaveSettings = async () => {
+    setIsSavingSettings(true);
+
+    try {
+      // Update template metadata
+      await api.updateTemplate(template.id, {
+        title: metadataForm.title,
+        description: metadataForm.description,
+        category: metadataForm.category,
+        requiresSignature: metadataForm.requiresSignature,
+        defaultSignerConfig: JSON.stringify(settingsWorkflowConfig)
+      });
+
+      // Invalidate templates query to refresh data
+      queryClient.invalidateQueries({ queryKey: ['templates'] });
+
+      // Close settings panel
+      setShowSettings(false);
+
+      // Show success and close modal
+      setSaveSuccess(true);
+      setTimeout(() => {
+        onSuccess();
+      }, 1500);
+    } catch (error: any) {
+      console.error('Failed to save template settings:', error);
+      alert('Failed to save settings: ' + (error.message || 'Unknown error'));
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   const getFieldColor = (field: Field) => {
     // Use signer-specific color if available
     if (field.signerIndex !== undefined && workflowSigners[field.signerIndex]) {
@@ -1363,6 +1545,15 @@ function FieldEditorModal({
                 {numPages} {numPages === 1 ? 'Page' : 'Pages'}
               </div>
             )}
+            {!isViewMode && (
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className="flex-shrink-0 p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
+                title="Template Settings"
+              >
+                <Settings className="w-5 h-5 sm:w-6 sm:h-6" />
+              </button>
+            )}
             <button
               onClick={onClose}
               className="flex-shrink-0 p-2 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100"
@@ -1375,7 +1566,7 @@ function FieldEditorModal({
         {/* Main Content Area - Flex Row for PDF and Sidebar */}
         <div className="flex-1 flex overflow-hidden">
           {/* PDF Viewer */}
-          <div className="flex-1 bg-gray-100 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <div className="flex-1 bg-gray-100 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] relative">
             <div
               className="flex items-start justify-center p-2 sm:p-4"
               onMouseMove={handleMouseMove}
@@ -1588,6 +1779,160 @@ function FieldEditorModal({
             </div>
           </div>
           </div>
+
+            {/* Settings Panel - Slide out from right */}
+            {showSettings && (
+              <div className="absolute top-0 right-0 h-full w-full sm:w-96 bg-white shadow-2xl z-50 flex flex-col border-l border-gray-200">
+                {/* Settings Header */}
+                <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-gray-50">
+                  <h3 className="text-lg font-bold text-gray-900">Template Settings</h3>
+                  <button
+                    onClick={() => setShowSettings(false)}
+                    className="p-1 text-gray-400 hover:text-gray-600 rounded hover:bg-gray-100"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Settings Form */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {/* Title */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Template Title *
+                    </label>
+                    <input
+                      type="text"
+                      value={metadataForm.title}
+                      onChange={(e) => setMetadataForm({ ...metadataForm, title: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-hartzell-blue focus:border-transparent text-sm"
+                      placeholder="e.g., Drug Test Consent Form"
+                      required
+                    />
+                  </div>
+
+                  {/* Category */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Category *
+                    </label>
+                    <select
+                      value={metadataForm.category}
+                      onChange={(e) => setMetadataForm({ ...metadataForm, category: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-hartzell-blue focus:border-transparent text-sm"
+                      required
+                    >
+                      <optgroup label="Tax & Onboarding Documents">
+                        <option value="W-4">W-4 Form</option>
+                        <option value="I-9">I-9 Form</option>
+                        <option value="Multiple Jobs Worksheet">Multiple Jobs Worksheet</option>
+                        <option value="Deductions Worksheet">Deductions Worksheet</option>
+                      </optgroup>
+                      <optgroup label="Legal & Compliance Documents">
+                        <option value="NDA">NDA (Non-Disclosure Agreement)</option>
+                        <option value="Non-Compete">Non-Compete Agreement</option>
+                        <option value="Handbook">Employee Handbook</option>
+                        <option value="Background Check">Background Check</option>
+                        <option value="Drug Test">Drug Test</option>
+                        <option value="Hiring Paperwork">Hiring Paperwork</option>
+                      </optgroup>
+                      <optgroup label="Benefits & Payroll Documents">
+                        <option value="Direct Deposit">Direct Deposit Authorization</option>
+                        <option value="401k Enrollment">401k Enrollment</option>
+                        <option value="Health Insurance">Health Insurance</option>
+                      </optgroup>
+                      <optgroup label="Identity & Verification Documents">
+                        <option value="Drivers License">Driver's License</option>
+                        <option value="Auto Insurance">Auto Insurance</option>
+                        <option value="Work Visa">Work Visa/Permit</option>
+                        <option value="Profile Photo">Profile Photo</option>
+                      </optgroup>
+                      <optgroup label="Training & Development Documents">
+                        <option value="Professional Certifications">Professional Certifications</option>
+                        <option value="Training Completion">Training Completion</option>
+                        <option value="Training Documents">Training Documents</option>
+                        <option value="Training Records">Training Records</option>
+                        <option value="Skills Assessment">Skills Assessment</option>
+                      </optgroup>
+                      <optgroup label="General Categories">
+                        <option value="onboarding">Onboarding (General)</option>
+                        <option value="tax">Tax Forms (General)</option>
+                        <option value="benefits">Benefits (General)</option>
+                        <option value="policy">Policies (General)</option>
+                        <option value="other">Other</option>
+                      </optgroup>
+                    </select>
+                  </div>
+
+                  {/* Description */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Description
+                    </label>
+                    <textarea
+                      value={metadataForm.description}
+                      onChange={(e) => setMetadataForm({ ...metadataForm, description: e.target.value })}
+                      rows={3}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-hartzell-blue focus:border-transparent text-sm"
+                      placeholder="Brief description of this document..."
+                    />
+                  </div>
+
+                  {/* Requires Signature */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="settingsRequiresSignature"
+                      checked={metadataForm.requiresSignature}
+                      onChange={(e) => setMetadataForm({ ...metadataForm, requiresSignature: e.target.checked })}
+                      className="w-4 h-4 text-hartzell-blue border-gray-300 rounded focus:ring-hartzell-blue"
+                    />
+                    <label htmlFor="settingsRequiresSignature" className="text-sm text-gray-700">
+                      This document requires employee signature
+                    </label>
+                  </div>
+
+                  {/* Workflow Configuration */}
+                  {metadataForm.requiresSignature && (
+                    <div className="border-t border-gray-200 pt-4">
+                      <TemplateWorkflowConfig
+                        value={settingsWorkflowConfig}
+                        onChange={setSettingsWorkflowConfig}
+                        currentAdminName={currentAdminName}
+                        employees={employees}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Settings Footer */}
+                <div className="p-4 border-t border-gray-200 bg-gray-50 space-y-2">
+                  <button
+                    onClick={handleSaveSettings}
+                    disabled={!metadataForm.title || isSavingSettings}
+                    className="w-full px-4 py-2 bg-hartzell-blue text-white rounded-lg font-medium hover:bg-hartzell-blue/90 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed text-sm"
+                  >
+                    {isSavingSettings ? 'Saving...' : 'Save Settings'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      // Reset form to original values
+                      setMetadataForm({
+                        title: template.title,
+                        description: template.description || '',
+                        category: template.category,
+                        requiresSignature: template.requiresSignature
+                      });
+                      setShowSettings(false);
+                    }}
+                    disabled={isSavingSettings}
+                    className="w-full px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Sidebar - Field Types */}
@@ -1748,23 +2093,14 @@ function FieldEditorModal({
                   Close
                 </button>
               ) : (
-                <>
-                  <button
-                    onClick={onClose}
-                    disabled={isSaving}
-                    className="flex-1 sm:flex-initial px-4 sm:px-6 py-2 sm:py-3 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Skip for Now
-                  </button>
-                  <button
-                    onClick={handleSaveFields}
-                    disabled={fields.length === 0 || isSaving || saveSuccess}
-                    className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 sm:px-6 py-2 sm:py-3 bg-hartzell-blue text-white rounded-lg font-medium hover:bg-hartzell-blue/90 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
-                  >
-                    <Save className="w-4 h-4" />
-                    {isSaving ? 'Saving...' : saveSuccess ? 'Saved!' : 'Save Fields'}
-                  </button>
-                </>
+                <button
+                  onClick={handleSaveFields}
+                  disabled={fields.length === 0 || isSaving || saveSuccess}
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 sm:px-6 py-2 sm:py-3 bg-hartzell-blue text-white rounded-lg font-medium hover:bg-hartzell-blue/90 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  <Save className="w-4 h-4" />
+                  {isSaving ? 'Saving...' : saveSuccess ? 'Saved!' : 'Save Fields'}
+                </button>
               )}
             </div>
           </div>

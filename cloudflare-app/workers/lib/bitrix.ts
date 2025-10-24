@@ -252,6 +252,31 @@ export class BitrixClient {
   }
 
   /**
+   * Update an item (applicant, employee, etc.) in Bitrix24
+   */
+  async updateItem(id: number, fields: Record<string, any>): Promise<any> {
+    const updateParams: Record<string, any> = {
+      entityTypeId: this.entityTypeId,
+      id: String(id)
+    };
+
+    // Add each field as a separate parameter
+    for (const [key, value] of Object.entries(fields)) {
+      if (Array.isArray(value)) {
+        value.forEach((item, index) => {
+          updateParams[`fields[${key}][${index}]`] = String(item);
+        });
+      } else if (value !== null && value !== undefined) {
+        updateParams[`fields[${key}]`] = String(value);
+      }
+    }
+
+    const response = await this.request<BitrixItemResult>('crm.item.update', updateParams);
+
+    return response.result?.item || null;
+  }
+
+  /**
    * Update employee fields in Bitrix24 with eventual consistency handling
    */
   async updateEmployee(id: number, fields: Partial<BitrixEmployee>): Promise<BitrixEmployee | null> {
@@ -517,6 +542,17 @@ export class BitrixClient {
   }
 
   /**
+   * Move employee to a different stage
+   */
+  async moveToStage(employeeId: number, stageId: string): Promise<BitrixEmployee | null> {
+    const updateFields = {
+      stageId: stageId
+    };
+
+    return await this.updateEmployee(employeeId, updateFields as any);
+  }
+
+  /**
    * Add timeline entry to employee record
    */
   async addTimelineEntry(
@@ -524,13 +560,12 @@ export class BitrixClient {
     comment: string,
     type: 'note' | 'activity' = 'note'
   ): Promise<void> {
+    // Use the same field format as other Bitrix24 API calls: fields[key]=value
     await this.request('crm.timeline.comment.add', {
-      fields: JSON.stringify({
-        entityId: employeeId,
-        entityTypeId: this.entityTypeId,
-        comment,
-        type
-      })
+      'fields[entityId]': employeeId.toString(),
+      'fields[entityTypeId]': this.entityTypeId,
+      'fields[comment]': comment,
+      'fields[type]': type
     });
   }
 

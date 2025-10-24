@@ -46,9 +46,16 @@ binding = "DOCUMENTS"
 bucket_name = "hartzell-hr-templates-prod"
 
 # Cron Triggers (scheduled tasks)
-# Runs daily at 9:00 AM Eastern Time (13:00 UTC)
+# Daily at 9:00 AM Eastern Time (year-round) - email reminders
+# Two triggers to handle EDT (UTC-4) and EST (UTC-5)
+# - 13:00 UTC = 9:00 AM EDT (March-November)
+# - 14:00 UTC = 9:00 AM EST (November-March)
+# Handler includes guard logic to prevent duplicate execution
+#
+# REMOVED: Every-minute polling (was causing 56,000 KV writes/day)
+# Stage change automation can be triggered via Bitrix24 webhooks instead
 [triggers]
-crons = ["0 13 * * *"]
+crons = ["0 13 * * *", "0 14 * * *"]
 
 # Observability
 [observability]

@@ -8,6 +8,48 @@ import { sendEmail, getConfirmationEmail } from '../lib/email';
 export const signatureRoutes = new Hono<{ Bindings: Env }>();
 
 /**
+ * Category-to-Bitrix24 Field Mapping
+ * When a document with these categories is signed, upload to the corresponding Bitrix24 field
+ *
+ * COMPLETE MAPPING: All 22 file fields from HR Center SPA
+ * Multiple file fields: Use addFileToEmployee (appends)
+ * Single file fields: Use uploadFileToEmployee (replaces)
+ */
+const CATEGORY_FIELD_MAP: Record<string, string> = {
+  // Tax & Onboarding Documents
+  'W-4': 'ufCrm_6_UF_W4_FILE', // W-4 Form (multiple)
+  'I-9': 'ufCrm_6_UF_I9_FILE', // I-9 Form (multiple)
+  'Multiple Jobs Worksheet': 'ufCrm6MultipleJobsWorksheet', // W-4 Multiple Jobs Worksheet (single)
+  'Deductions Worksheet': 'ufCrm6DeductionsWorksheet', // W-4 Deductions Worksheet (single)
+
+  // Legal & Compliance Documents
+  'NDA': 'ufCrm6Nda', // NDA Agreement (single)
+  'Non-Compete': 'ufCrm6Noncompete', // Non-Compete Agreement (single)
+  'Handbook': 'ufCrm6HandbookAck', // Employee Handbook Acknowledgment (single)
+  'Background Check': 'ufCrm6BackgroundCheck', // Background Check (single)
+  'Drug Test': 'ufCrm6DrugTest', // Drug Test Results (multiple)
+  'Hiring Paperwork': 'ufCrm6HiringPaperwork', // Hiring Paperwork (multiple)
+
+  // Benefits & Payroll Documents
+  'Direct Deposit': 'ufCrm6DirectDeposit', // Direct Deposit Authorization (single)
+  '401k Enrollment': 'ufCrm_6_401K_ENROLLMENT', // 401k Enrollment (single)
+  'Health Insurance': 'ufCrm6HealthInsurance', // Health Insurance Enrollment (single)
+
+  // Identity & Verification Documents
+  'Drivers License': 'ufCrm_6_UF_USR_1747966315398', // Driver's License (single)
+  'Auto Insurance': 'ufCrm_6_UF_USR_1737120327618', // Automobile Insurance (single)
+  'Work Visa': 'ufCrm6WorkVisa', // Work Visa/Permit (single)
+  'Profile Photo': 'ufCrm6ProfilePhoto', // Profile Photo (single)
+
+  // Training & Development Documents
+  'Professional Certifications': 'ufCrm6Certifications', // Professional Certifications (multiple)
+  'Training Completion': 'ufCrm6TrainingComplete', // Required Training Completion (multiple)
+  'Training Documents': 'ufCrm6TrainingDocs', // Training Documents (multiple)
+  'Training Records': 'ufCrm6TrainingRecords', // Training Records (multiple)
+  'Skills Assessment': 'ufCrm6SkillsAssessment', // Skills Assessment (single)
+};
+
+/**
  * NATIVE SIGNATURE SYSTEM
  * OpenSign integration has been removed. All signatures use the native pdf-lib system.
  */
@@ -44,9 +86,9 @@ signatureRoutes.post('/sign-native', async (c) => {
       signatureFields: SignatureField[];
     }>();
 
-    // 1. Get assignment details (including multi-signer fields)
+    // 1. Get assignment details (including multi-signer fields and category)
     const assignment = await env.DB.prepare(`
-      SELECT da.*, dt.template_url, dt.title as template_title
+      SELECT da.*, dt.template_url, dt.title as template_title, dt.category
       FROM document_assignments da
       JOIN document_templates dt ON da.template_id = dt.id
       WHERE da.id = ?
@@ -195,36 +237,84 @@ signatureRoutes.post('/sign-native', async (c) => {
 
         const r2Url = `r2://hartzell-hr-templates/${finalKey}`;
 
-        // Upload to Bitrix24 (first signer's record)
+        // Add timeline entry to Bitrix24 (audit trail only - PDF stored in R2)
         const bitrix = new BitrixClient(env);
         const firstSignerBitrixId = assignment.employee_id; // First signer is stored in assignment
-        const bitrixFileId = await bitrix.uploadFileToEmployee(
-          firstSignerBitrixId,
-          `${assignment.template_title}_signed.pdf`,
-          signedPdfBytes
-        );
-
-        // Add timeline entry
         await bitrix.addTimelineEntry(
           firstSignerBitrixId,
-          `Multi-signer document "${assignment.template_title}" completed with ${totalSigners?.count} signatures on ${new Date().toLocaleDateString()}`,
+          `Multi-signer document "${assignment.template_title}" completed with ${totalSigners?.count} signatures on ${new Date().toLocaleDateString()}. Signed PDF stored in R2: ${finalKey}`,
           'note'
         );
+
+        // Category-based Bitrix24 file upload for multi-signer documents
+        const bitrixField = assignment.category ? CATEGORY_FIELD_MAP[assignment.category] : null;
+        if (bitrixField) {
+          console.log(`[MULTI-SIGNER][CATEGORY-UPLOAD] Category "${assignment.category}" mapped to field "${bitrixField}"`);
+
+          // Determine if multiple or single file field
+          // ALL 8 multiple file fields from HR Center SPA
+          const multipleFileFields = [
+            'ufCrm_6_UF_W4_FILE', // W-4 Form
+            'ufCrm_6_UF_I9_FILE', // I-9 Form
+            'ufCrm6DrugTest', // Drug Test Results
+            'ufCrm6HiringPaperwork', // Hiring Paperwork
+            'ufCrm6Certifications', // Professional Certifications
+            'ufCrm6TrainingComplete', // Required Training Completion
+            'ufCrm6TrainingDocs', // Training Documents
+            'ufCrm6TrainingRecords', // Training Records
+          ];
+
+          try {
+            if (multipleFileFields.includes(bitrixField)) {
+              // Use addFileToEmployee for multiple file fields (appends to existing files)
+              await bitrix.addFileToEmployee(
+                firstSignerBitrixId,
+                `${assignment.template_title}_signed.pdf`,
+                signedPdfBytes,
+                bitrixField
+              );
+              console.log(`[MULTI-SIGNER][CATEGORY-UPLOAD] Added to multiple file field: ${bitrixField}`);
+            } else {
+              // Use uploadFileToEmployee for single file fields (replaces existing file)
+              await bitrix.uploadFileToEmployee(
+                firstSignerBitrixId,
+                `${assignment.template_title}_signed.pdf`,
+                signedPdfBytes,
+                bitrixField
+              );
+              console.log(`[MULTI-SIGNER][CATEGORY-UPLOAD] Uploaded to single file field: ${bitrixField}`);
+            }
+
+            // Update timeline with upload confirmation
+            await bitrix.addTimelineEntry(
+              firstSignerBitrixId,
+              `Multi-signer document "${assignment.template_title}" uploaded to ${assignment.category} field in Bitrix24`,
+              'note'
+            );
+          } catch (uploadError) {
+            console.error(`[MULTI-SIGNER][CATEGORY-UPLOAD] Failed to upload to Bitrix24 field "${bitrixField}":`, uploadError);
+            // Don't fail the entire signing process if Bitrix24 upload fails
+            // Document is still saved in R2 and timeline entry was created
+          }
+        } else if (assignment.category) {
+          console.log(`[MULTI-SIGNER][CATEGORY-UPLOAD] Category "${assignment.category}" not mapped to any Bitrix24 field`);
+        } else {
+          console.log('[MULTI-SIGNER][CATEGORY-UPLOAD] No category assigned - skipping Bitrix24 file upload');
+        }
 
         // Mark assignment as signed
         await env.DB.prepare(`
           UPDATE document_assignments
           SET status = 'signed',
               signed_at = datetime('now'),
-              signed_document_url = ?,
-              bitrix_file_id = ?
+              signed_document_url = ?
           WHERE id = ?
-        `).bind(r2Url, bitrixFileId, body.assignmentId).run();
+        `).bind(r2Url, body.assignmentId).run();
 
         console.log('[MULTI-SIGNER] Workflow complete:', {
           assignmentId: body.assignmentId,
           finalKey,
-          bitrixFileId
+          r2Url
         });
 
         // Mark pending tasks as completed for all signers
@@ -273,7 +363,7 @@ signatureRoutes.post('/sign-native', async (c) => {
           isMultiSigner: true,
           isLastSigner: true,
           documentUrl: finalKey,
-          bitrixFileId,
+          r2Url,
           message: 'Multi-signer document completed successfully',
         });
 
@@ -386,30 +476,78 @@ signatureRoutes.post('/sign-native', async (c) => {
 
     const r2Url = `r2://hartzell-hr-templates/${r2Key}`;
 
-    // 7. Upload signed PDF to Bitrix24
+    // 7. Add timeline entry to Bitrix24 (audit trail only - PDF stored in R2)
     const bitrix = new BitrixClient(env);
-    const bitrixFileId = await bitrix.uploadFileToEmployee(
-      session.bitrixId,
-      `${assignment.template_title}_signed.pdf`,
-      signedPdfBytes
-    );
-
-    // 8. Add timeline entry in Bitrix24
     await bitrix.addTimelineEntry(
       session.bitrixId,
-      `Document "${assignment.template_title}" signed electronically on ${new Date().toLocaleDateString()}`,
+      `Document "${assignment.template_title}" signed electronically on ${new Date().toLocaleDateString()}. Signed PDF stored in R2: ${r2Key}`,
       'note'
     );
 
-    // 9. Update assignment status in D1
+    // 7b. Category-based Bitrix24 file upload
+    const bitrixField = assignment.category ? CATEGORY_FIELD_MAP[assignment.category] : null;
+    if (bitrixField) {
+      console.log(`[CATEGORY-UPLOAD] Category "${assignment.category}" mapped to field "${bitrixField}"`);
+
+      // Determine if multiple or single file field
+      // ALL 8 multiple file fields from HR Center SPA
+      const multipleFileFields = [
+        'ufCrm_6_UF_W4_FILE', // W-4 Form
+        'ufCrm_6_UF_I9_FILE', // I-9 Form
+        'ufCrm6DrugTest', // Drug Test Results
+        'ufCrm6HiringPaperwork', // Hiring Paperwork
+        'ufCrm6Certifications', // Professional Certifications
+        'ufCrm6TrainingComplete', // Required Training Completion
+        'ufCrm6TrainingDocs', // Training Documents
+        'ufCrm6TrainingRecords', // Training Records
+      ];
+
+      try {
+        if (multipleFileFields.includes(bitrixField)) {
+          // Use addFileToEmployee for multiple file fields (appends to existing files)
+          await bitrix.addFileToEmployee(
+            session.bitrixId,
+            `${assignment.template_title}_signed.pdf`,
+            signedPdfBytes,
+            bitrixField
+          );
+          console.log(`[CATEGORY-UPLOAD] Added to multiple file field: ${bitrixField}`);
+        } else {
+          // Use uploadFileToEmployee for single file fields (replaces existing file)
+          await bitrix.uploadFileToEmployee(
+            session.bitrixId,
+            `${assignment.template_title}_signed.pdf`,
+            signedPdfBytes,
+            bitrixField
+          );
+          console.log(`[CATEGORY-UPLOAD] Uploaded to single file field: ${bitrixField}`);
+        }
+
+        // Update timeline with upload confirmation
+        await bitrix.addTimelineEntry(
+          session.bitrixId,
+          `Signed document "${assignment.template_title}" uploaded to ${assignment.category} field in Bitrix24`,
+          'note'
+        );
+      } catch (uploadError) {
+        console.error(`[CATEGORY-UPLOAD] Failed to upload to Bitrix24 field "${bitrixField}":`, uploadError);
+        // Don't fail the entire signing process if Bitrix24 upload fails
+        // Document is still saved in R2 and timeline entry was created
+      }
+    } else if (assignment.category) {
+      console.log(`[CATEGORY-UPLOAD] Category "${assignment.category}" not mapped to any Bitrix24 field`);
+    } else {
+      console.log('[CATEGORY-UPLOAD] No category assigned - skipping Bitrix24 file upload');
+    }
+
+    // 8. Update assignment status in D1
     await env.DB.prepare(`
       UPDATE document_assignments
       SET status = 'signed',
           signed_at = datetime('now'),
-          signed_document_url = ?,
-          bitrix_file_id = ?
+          signed_document_url = ?
       WHERE id = ?
-    `).bind(r2Url, bitrixFileId, body.assignmentId).run();
+    `).bind(r2Url, body.assignmentId).run();
 
     // 10. Mark pending task as completed (if exists)
     await env.DB.prepare(`
@@ -437,7 +575,7 @@ signatureRoutes.post('/sign-native', async (c) => {
     console.log('[SINGLE-SIGNER] Document signed successfully:', {
       assignmentId: body.assignmentId,
       r2Key,
-      bitrixFileId
+      r2Url
     });
 
     // 12. Send signature confirmation email
@@ -476,7 +614,7 @@ signatureRoutes.post('/sign-native', async (c) => {
       success: true,
       isMultiSigner: false,
       documentUrl: r2Key,
-      bitrixFileId,
+      r2Url,
       message: 'Document signed successfully',
     });
 

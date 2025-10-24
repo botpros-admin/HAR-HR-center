@@ -1,23 +1,9 @@
 'use client';
 
-import { useState } from 'react';
 import { Briefcase, Users, Award, ArrowRight, Building2, Shield, Heart } from 'lucide-react';
-import { CaptchaGate } from '@/components/CaptchaGate';
-import { useRouter } from 'next/navigation';
 
 export default function HomePage() {
   const logoUrl = 'https://hartzellpainting.com/wp-content/uploads/2025/05/Heartzell-Logo.png';
-  const [showCaptcha, setShowCaptcha] = useState(false);
-  const router = useRouter();
-
-  const handleApplyClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    setShowCaptcha(true);
-  };
-
-  const handleCaptchaVerified = () => {
-    router.push('/apply');
-  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50">
@@ -58,13 +44,13 @@ export default function HomePage() {
             A family-based company serving Florida with excellence in Painting, Windows & Doors, and Construction.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <button
-              onClick={handleApplyClick}
+            <a
+              href="/apply"
               className="btn btn-primary text-lg px-8 py-4 flex items-center justify-center gap-2 group"
             >
               Apply Now
               <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </button>
+            </a>
             <a
               href="#why-hartzell"
               className="btn btn-secondary text-lg px-8 py-4"
@@ -174,13 +160,13 @@ export default function HomePage() {
             Our application is straightforward and respectful of your time—we know you're a professional,
             and we'll treat you like one from day one.
           </p>
-          <button
-            onClick={handleApplyClick}
+          <a
+            href="/apply"
             className="inline-flex items-center gap-2 bg-white text-hartzell-blue px-8 py-4 rounded-lg font-semibold text-lg hover:bg-gray-100 transition-colors group"
           >
             Start Your Application
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-          </button>
+          </a>
         </div>
 
         {/* Footer */}
@@ -191,14 +177,6 @@ export default function HomePage() {
           </p>
         </div>
       </div>
-
-      {/* CAPTCHA Gate Modal */}
-      {showCaptcha && (
-        <CaptchaGate
-          onVerified={handleCaptchaVerified}
-          onClose={() => setShowCaptcha(false)}
-        />
-      )}
     </div>
   );
 }

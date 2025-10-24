@@ -7,6 +7,7 @@ import { SignatureCanvas } from './SignatureCanvas';
 import { SecureSignatureBox } from './SecureSignatureBox';
 import { SecureSignatureFrame } from './SecureSignatureFrame';
 import { LoadingAnimation } from './LoadingAnimation';
+import { api } from '@/lib/api';
 
 interface FieldPosition {
   type: 'signature' | 'initials' | 'date' | 'checkbox' | 'text';
@@ -57,6 +58,11 @@ export function NativeSignatureModal({
   const [isTouchDevice, setIsTouchDevice] = useState<boolean>(false);
   const [currentSerialNumber, setCurrentSerialNumber] = useState<string>('');
 
+  // Saved signatures from profile
+  const [savedSignature, setSavedSignature] = useState<string | null>(null);
+  const [savedInitials, setSavedInitials] = useState<string | null>(null);
+  const [isFetchingSavedSignatures, setIsFetchingSavedSignatures] = useState(false);
+
   // Detect if device supports touch
   useEffect(() => {
     const hasTouchScreen =
@@ -66,6 +72,62 @@ export function NativeSignatureModal({
 
     setIsTouchDevice(hasTouchScreen);
   }, []);
+
+  // Fetch saved signature and initials when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    setIsFetchingSavedSignatures(true);
+
+    // Fetch saved signature
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/employee/profile/signature`, {
+      credentials: 'include',
+    })
+      .then(async (response) => {
+        if (response.ok) {
+          const blob = await response.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setSavedSignature(reader.result as string);
+            console.log('[Auto-populate] Saved signature loaded from profile');
+          };
+          reader.readAsDataURL(blob);
+        } else {
+          console.log('[Auto-populate] No saved signature found');
+          setSavedSignature(null);
+        }
+      })
+      .catch((err) => {
+        console.log('[Auto-populate] Error fetching saved signature:', err);
+        setSavedSignature(null);
+      });
+
+    // Fetch saved initials
+    fetch(`${process.env.NEXT_PUBLIC_API_URL}/employee/profile/initials`, {
+      credentials: 'include',
+    })
+      .then(async (response) => {
+        if (response.ok) {
+          const blob = await response.blob();
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setSavedInitials(reader.result as string);
+            console.log('[Auto-populate] Saved initials loaded from profile');
+          };
+          reader.readAsDataURL(blob);
+        } else {
+          console.log('[Auto-populate] No saved initials found');
+          setSavedInitials(null);
+        }
+      })
+      .catch((err) => {
+        console.log('[Auto-populate] Error fetching saved initials:', err);
+        setSavedInitials(null);
+      })
+      .finally(() => {
+        setIsFetchingSavedSignatures(false);
+      });
+  }, [isOpen]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -279,6 +341,31 @@ export function NativeSignatureModal({
 
   // Handle field click
   const handleFieldClick = (field: FieldPosition) => {
+    // Check if field is already filled - if so, allow manual override
+    const isAlreadyFilled = filledFields.has(field.id!);
+
+    // AUTO-POPULATE: If field is signature/initials and user has saved one in profile
+    if (!isAlreadyFilled && field.type === 'signature' && savedSignature) {
+      console.log('[Auto-populate] Using saved signature from profile');
+      setFilledFields(prev => new Map(prev).set(field.id!, {
+        fieldId: field.id!,
+        type: field.type,
+        data: savedSignature,
+        label: field.label,
+      }));
+      return; // Skip showing popup
+    } else if (!isAlreadyFilled && field.type === 'initials' && savedInitials) {
+      console.log('[Auto-populate] Using saved initials from profile');
+      setFilledFields(prev => new Map(prev).set(field.id!, {
+        fieldId: field.id!,
+        type: field.type,
+        data: savedInitials,
+        label: field.label,
+      }));
+      return; // Skip showing popup
+    }
+
+    // If field already filled OR no saved signature, show popup for manual input/override
     setActiveField(field);
     setTempSignature(null);
     setTypedName('');
@@ -357,8 +444,15 @@ export function NativeSignatureModal({
     const isFilled = filledFields.has(field.id!);
     const filledData = filledFields.get(field.id!);
 
+    // Check if this field will be auto-populated
+    const willAutoPopulate = !isFilled && (
+      (field.type === 'signature' && savedSignature) ||
+      (field.type === 'initials' && savedInitials)
+    );
+
     const getFieldColor = () => {
       if (isFilled) return 'border-green-500 bg-green-100';
+      if (willAutoPopulate) return 'border-blue-500 bg-blue-100 hover:bg-blue-200'; // Different color for auto-populate
       switch (field.type) {
         case 'signature': return 'border-blue-500 bg-blue-50 hover:bg-blue-100';
         case 'initials': return 'border-purple-500 bg-purple-50 hover:bg-purple-100';
@@ -381,12 +475,19 @@ export function NativeSignatureModal({
           pointerEvents: 'auto',
         }}
         onClick={() => handleFieldClick(field)}
-        title={`Click to ${isFilled ? 'edit' : 'fill'} ${field.label}`}
+        title={willAutoPopulate ? `Click to auto-fill with saved ${field.type}` : `Click to ${isFilled ? 'edit' : 'fill'} ${field.label}`}
       >
         {/* Required indicator */}
         {field.required && (
           <div className="absolute -top-1 -left-1 w-3 h-3 bg-red-500 text-white rounded-full flex items-center justify-center text-xs font-bold z-10">
             *
+          </div>
+        )}
+
+        {/* Auto-populate indicator */}
+        {willAutoPopulate && (
+          <div className="absolute -top-1 -right-1 w-5 h-5 bg-blue-600 text-white rounded-full flex items-center justify-center text-xs font-bold z-10" title="Saved in profile - click to auto-fill">
+            <CheckCircle className="w-4 h-4" />
           </div>
         )}
 
@@ -402,7 +503,9 @@ export function NativeSignatureModal({
           </div>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-xs font-medium opacity-60">
-            <span className="text-center px-1">{field.label}</span>
+            <span className="text-center px-1">
+              {willAutoPopulate ? `Click to use saved ${field.type}` : field.label}
+            </span>
           </div>
         )}
       </div>
@@ -440,11 +543,6 @@ export function NativeSignatureModal({
         f.type === 'signature' && filledFields.has(f.id || `field-${parsedFieldPositions.indexOf(f)}`)
       );
 
-      // 🚨 CRITICAL DEBUG LOGGING
-      console.error('🚨🚨🚨 [CRITICAL SUBMIT DEBUG] ================================');
-      console.error('parsedFieldPositions (should be PDF points from DB):', JSON.stringify(parsedFieldPositions, null, 2));
-      console.error('signatureFields (filtered):', JSON.stringify(signatureFields, null, 2));
-
       if (signatureFields.length === 0) {
         throw new Error('At least one signature is required');
       }
@@ -460,23 +558,23 @@ export function NativeSignatureModal({
       // Convert all signature fields to PDF coordinates
       const pdfSignatureFields = convertFieldsToPdfCoordinates(signatureFields);
 
-      console.error('🚨 pdfSignatureFields (BEING SENT TO BACKEND):', JSON.stringify(pdfSignatureFields, null, 2));
-      console.error('🚨 Expected PDF points from DB: x=330.05 (NOT 38.56), y=866.70 (NOT 17.09)');
-      console.error('🚨 If you see small numbers like 38.56, THE BUG IS CONFIRMED!');
-      console.error('================================');
-
-      // SHOW VISIBLE ALERT
-      alert(`SUBMIT DEBUG:\nFirst field being sent:\nx: ${pdfSignatureFields[0].x}\ny: ${pdfSignatureFields[0].y}\n\nExpected: x≈330, y≈866\nIf showing x≈38, y≈17 = BUG!`);
-
       console.log('[NativeSignatureModal] Submitting signature:', {
         assignmentId,
         signatureFieldsCount: pdfSignatureFields.length,
         fields: pdfSignatureFields,
       });
 
+      // Get CSRF token from API client
+      const csrfToken = api.getCsrfToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
+
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/signatures/sign-native`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify({
           assignmentId,
@@ -487,8 +585,7 @@ export function NativeSignatureModal({
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('🚨 Backend error response:', errorText);
-        alert(`Backend Error:\nStatus: ${response.status}\nResponse: ${errorText}`);
+        console.error('Backend error response:', errorText);
 
         let errorData;
         try {

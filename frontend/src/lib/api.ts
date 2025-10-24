@@ -218,6 +218,19 @@ class ApiClient {
     return data;
   }
 
+  async updateTemplate(templateId: string, updates: {
+    title?: string;
+    description?: string;
+    category?: string;
+    requiresSignature?: boolean;
+    defaultSignerConfig?: string;
+  }): Promise<{ success: boolean; message: string; template: any }> {
+    return this.request<{ success: boolean; message: string; template: any }>(`/admin/templates/${templateId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+  }
+
   async deleteTemplate(templateId: string): Promise<{ success: boolean; message: string }> {
     return this.request<{ success: boolean; message: string }>(`/admin/templates/${templateId}`, {
       method: 'DELETE',

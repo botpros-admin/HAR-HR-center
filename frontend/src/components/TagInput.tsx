@@ -14,12 +14,13 @@ export default function TagInput({ value = [], onChange, placeholder = 'Type and
   const [inputValue, setInputValue] = useState('');
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && inputValue.trim()) {
-      e.preventDefault();
-      if (!value.includes(inputValue.trim())) {
+    if (e.key === 'Enter') {
+      e.preventDefault(); // ALWAYS prevent Enter from submitting the form
+      e.stopPropagation();
+      if (inputValue.trim() && !value.includes(inputValue.trim())) {
         onChange([...value, inputValue.trim()]);
+        setInputValue('');
       }
-      setInputValue('');
     } else if (e.key === 'Backspace' && !inputValue && value.length > 0) {
       onChange(value.slice(0, -1));
     }

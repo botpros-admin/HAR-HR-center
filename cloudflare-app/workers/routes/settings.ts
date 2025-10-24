@@ -7,7 +7,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import type { Env } from '../types';
 import { verifySession } from '../lib/auth';
-import { sendEmail } from '../lib/email';
+import { sendEmail, getReminderEmail } from '../lib/email';
 
 export const settingsRoutes = new Hono<{ Bindings: Env }>();
 
@@ -502,6 +502,90 @@ This is a test message from Hartzell HR Center. Sent at ${new Date().toLocaleStr
     return c.json({
       success: false,
       error: 'Failed to send test email',
+      details: (error as Error).message
+    }, 500);
+  }
+});
+
+// POST /api/admin/settings/email/test-reminder - Send test reminder email
+settingsRoutes.post('/email/test-reminder', async (c) => {
+  const env = c.env;
+
+  try {
+    const body = await c.req.json();
+    const email = body.email;
+
+    if (!email || typeof email !== 'string') {
+      return c.json({ error: 'Email address is required' }, 400);
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return c.json({ error: 'Invalid email address format' }, 400);
+    }
+
+    console.log(`[Settings] Sending test reminder email to ${email}`);
+
+    // Create realistic reminder email with sample data
+    const dueDate = new Date();
+    dueDate.setDate(dueDate.getDate() + 3); // Due in 3 days
+    const dueDateStr = dueDate.toLocaleDateString('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    const emailTemplate = getReminderEmail({
+      employeeName: 'Test Employee',
+      documentTitle: 'W-4 Employee Withholding Certificate',
+      dueDate: dueDateStr,
+      assignmentUrl: 'https://app.hartzell.work/'
+    });
+
+    // Send email via Resend (bypass global settings for testing)
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'Hartzell HR Center <noreply@hartzell.work>',
+        to: [email],
+        subject: emailTemplate.subject,
+        html: emailTemplate.html,
+        text: emailTemplate.text
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorText = errorData.message || JSON.stringify(errorData);
+      console.error('[Settings] Resend API error:', response.status, errorText);
+
+      return c.json({
+        success: false,
+        error: 'Failed to send test reminder email',
+        details: `HTTP ${response.status}: ${errorText}`
+      }, 500);
+    }
+
+    const responseData = await response.json();
+    console.log(`[Settings] Test reminder email sent successfully, ID:`, responseData.id);
+
+    return c.json({
+      success: true,
+      message: `Test reminder email sent successfully to ${email}`,
+      emailId: responseData.id
+    });
+
+  } catch (error) {
+    console.error('[Settings] Error sending test reminder email:', error);
+    return c.json({
+      success: false,
+      error: 'Failed to send test reminder email',
       details: (error as Error).message
     }, 500);
   }

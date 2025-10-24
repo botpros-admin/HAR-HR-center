@@ -404,20 +404,23 @@ const FIELD_MAP: Record<string, string> = {
   // Additional Information (1 field)
   additionalInfo: 'ufCrm6AdditionalInfo',
 
-  // File Fields (20 fields) - IMPORTANT: These match types.ts exactly
+  // File Fields (22 fields) - VERIFIED against Bitrix24 API
+  profilePhoto: 'ufCrm6ProfilePhoto',
   workVisa: 'ufCrm6WorkVisa',
-  w4File: 'ufCrm6UfW4File', // Note: ufCrm6UfW4File not ufCrm6W4File
-  i9File: 'ufCrm6UfI9File', // Note: ufCrm6UfI9File not ufCrm6I9File
+  w4File: 'ufCrm_6_UF_W4_FILE', // CORRECTED: Multiple file field
+  i9File: 'ufCrm_6_UF_I9_FILE', // CORRECTED: Multiple file field
   multipleJobsWorksheet: 'ufCrm6MultipleJobsWorksheet',
   deductionsWorksheet: 'ufCrm6DeductionsWorksheet',
   directDeposit: 'ufCrm6DirectDeposit',
+  healthInsurance: 'ufCrm6HealthInsurance',
+  has401k: 'ufCrm_6_401K_ENROLLMENT',
   trainingComplete: 'ufCrm6TrainingComplete',
-  professionalCertifications: 'ufCrm6ProfessionalCertifications',
+  professionalCertifications: 'ufCrm6Certifications', // NOTE: Different from field name
   trainingRecords: 'ufCrm6TrainingRecords',
   skillsAssessment: 'ufCrm6SkillsAssessment',
   trainingDocs: 'ufCrm6TrainingDocs',
-  driversLicense: 'ufCrm6UfUsr1747966315398', // Custom field with timestamp ID
-  autoInsurance: 'ufCrm6UfUsr1737120327618', // Custom field with timestamp ID
+  driversLicense: 'ufCrm_6_UF_USR_1747966315398', // CORRECTED: Underscores not camelCase
+  autoInsurance: 'ufCrm_6_UF_USR_1737120327618', // CORRECTED: Underscores not camelCase
   hiringPaperwork: 'ufCrm6HiringPaperwork',
   handbookAck: 'ufCrm6HandbookAck',
   backgroundCheck: 'ufCrm6BackgroundCheck',
@@ -1405,6 +1408,100 @@ adminRoutes.get('/templates/:id/download', async (c) => {
   } catch (error) {
     console.error('Error downloading template:', error);
     return c.json({ error: 'Failed to download template', details: (error as Error).message }, 500);
+  }
+});
+
+// Update template metadata
+adminRoutes.patch('/templates/:id', async (c) => {
+  const env = c.env;
+  const templateId = c.req.param('id');
+
+  try {
+    const body = await c.req.json();
+    const { title, description, category, requiresSignature, defaultSignerConfig } = body;
+
+    // Verify template exists
+    const template = await env.DB.prepare('SELECT id, title FROM document_templates WHERE id = ?')
+      .bind(templateId)
+      .first();
+
+    if (!template) {
+      return c.json({ error: 'Template not found' }, 404);
+    }
+
+    // Build update query dynamically based on provided fields
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (title !== undefined) {
+      updates.push('title = ?');
+      params.push(title);
+    }
+    if (description !== undefined) {
+      updates.push('description = ?');
+      params.push(description);
+    }
+    if (category !== undefined) {
+      updates.push('category = ?');
+      params.push(category);
+    }
+    if (requiresSignature !== undefined) {
+      updates.push('requires_signature = ?');
+      params.push(requiresSignature ? 1 : 0);
+    }
+    if (defaultSignerConfig !== undefined) {
+      updates.push('default_signer_config = ?');
+      params.push(defaultSignerConfig);
+    }
+
+    // Always update updated_at
+    updates.push('updated_at = ?');
+    params.push(new Date().toISOString());
+
+    // Add templateId for WHERE clause
+    params.push(templateId);
+
+    // Execute update
+    await env.DB.prepare(`
+      UPDATE document_templates
+      SET ${updates.join(', ')}
+      WHERE id = ?
+    `).bind(...params).run();
+
+    // Fetch updated template
+    const updatedTemplate = await env.DB.prepare(`
+      SELECT
+        id, title, description, category, template_url, file_name, file_size,
+        requires_signature, field_positions, default_signer_config, is_active,
+        created_by, created_at, updated_at
+      FROM document_templates
+      WHERE id = ?
+    `).bind(templateId).first();
+
+    return c.json({
+      success: true,
+      message: 'Template updated successfully',
+      template: {
+        id: updatedTemplate?.id,
+        title: updatedTemplate?.title,
+        description: updatedTemplate?.description,
+        category: updatedTemplate?.category,
+        templateUrl: updatedTemplate?.template_url,
+        fileName: updatedTemplate?.file_name,
+        fileSize: updatedTemplate?.file_size,
+        requiresSignature: updatedTemplate?.requires_signature === 1,
+        fieldPositions: updatedTemplate?.field_positions,
+        defaultSignerConfig: updatedTemplate?.default_signer_config,
+        isActive: updatedTemplate?.is_active === 1,
+        createdBy: updatedTemplate?.created_by,
+        createdAt: updatedTemplate?.created_at,
+        updatedAt: updatedTemplate?.updated_at
+      }
+    });
+
+  } catch (error) {
+    console.error('Error updating template:', error);
+    return c.json({ error: 'Failed to update template', details: (error as Error).message }, 500);
   }
 });
 
