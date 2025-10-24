@@ -321,8 +321,16 @@ export default function TemplatesPage() {
             queryClient.invalidateQueries({ queryKey: ['templates'] });
             setShowUploadModal(false);
             setCurrentTemplate(template);
+            setAutoMappedFields(null); // Manual mode - no auto-mapped fields
             setShowFieldEditor(true);
             showToast('Template uploaded successfully!', 'success');
+          }}
+          onSuccessWithAutoMap={async (template) => {
+            queryClient.invalidateQueries({ queryKey: ['templates'] });
+            setShowUploadModal(false);
+            showToast('Template uploaded! AI AutoMap analyzing...', 'info');
+            // Trigger AI AutoMap
+            await handleAutoMap(template);
           }}
           onError={(message) => showToast(message, 'error')}
           onValidationError={(message) => showToast(message, 'warning')}
@@ -715,12 +723,14 @@ function UploadModal({
   onClose,
   onSuccess,
   onError,
-  onValidationError
+  onValidationError,
+  onSuccessWithAutoMap
 }: {
   onClose: () => void;
   onSuccess: (template: any) => void;
   onError: (message: string) => void;
   onValidationError: (message: string) => void;
+  onSuccessWithAutoMap?: (template: any) => void;
 }) {
   const [formData, setFormData] = useState({
     title: '',
@@ -732,6 +742,7 @@ function UploadModal({
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [workflowConfig, setWorkflowConfig] = useState<DefaultSignerConfig>({ mode: 'single_signer' });
+  const [useAIAutoMap, setUseAIAutoMap] = useState(true); // Auto-map by default for PDFs
 
   // Fetch employees for person selector
   const { data: employeesData } = useQuery({
@@ -770,7 +781,13 @@ function UploadModal({
       uploadFormData.append('defaultSignerConfig', JSON.stringify(workflowConfig));
 
       const result = await api.uploadTemplate(uploadFormData);
-      onSuccess(result.template);
+
+      // If AI AutoMap is enabled and callback provided, use it
+      if (useAIAutoMap && onSuccessWithAutoMap) {
+        onSuccessWithAutoMap(result.template);
+      } else {
+        onSuccess(result.template);
+      }
     } catch (error: any) {
       onError(error.message || 'Failed to upload template');
     } finally {
@@ -956,6 +973,28 @@ function UploadModal({
               This document requires employee signature
             </label>
           </div>
+
+          {/* AI AutoMap Checkbox - Only for PDF files */}
+          {file && file.type === 'application/pdf' && (
+            <div className="flex items-start gap-2 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+              <input
+                type="checkbox"
+                id="useAIAutoMap"
+                checked={useAIAutoMap}
+                onChange={(e) => setUseAIAutoMap(e.target.checked)}
+                className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 mt-0.5"
+              />
+              <div className="flex-1">
+                <label htmlFor="useAIAutoMap" className="text-sm font-medium text-gray-900 cursor-pointer flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  Use AI AutoMap after upload
+                </label>
+                <p className="text-xs text-gray-600 mt-1">
+                  Automatically detect and map form fields using Claude AI (saves 30+ minutes of manual work)
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Workflow Configuration - Only shown when signature is required */}
           {formData.requiresSignature && (
