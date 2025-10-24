@@ -100,12 +100,22 @@ export default function TemplatesPage() {
     showToast('AI AutoMap analyzing PDF...', 'info');
 
     try {
+      // Get CSRF token from api client
+      const csrfToken = api.getCsrfToken();
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      // Add CSRF token if available
+      if (csrfToken) {
+        headers['X-CSRF-Token'] = csrfToken;
+      }
+
       const response = await fetch(`https://hartzell.work/api/admin/templates/${template.id}/automap`, {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
       });
 
       if (!response.ok) {
