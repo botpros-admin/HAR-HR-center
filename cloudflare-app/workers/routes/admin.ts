@@ -1632,6 +1632,59 @@ adminRoutes.put('/templates/:id/fields', async (c) => {
   }
 });
 
+// AI AutoMap: Automatically map PDF fields to employee data using Claude 4.5 Sonnet
+adminRoutes.post('/templates/:id/automap', async (c) => {
+  const env = c.env;
+  const templateId = c.req.param('id');
+
+  try {
+    // Verify template exists
+    const template = await env.DB.prepare(`
+      SELECT id, title, r2_key, file_size
+      FROM document_templates
+      WHERE id = ?
+    `).bind(templateId).first();
+
+    if (!template) {
+      return c.json({ error: 'Template not found' }, 404);
+    }
+
+    // Get PDF from R2
+    const pdfObject = await env.DOCUMENTS.get(template.r2_key as string);
+    if (!pdfObject) {
+      return c.json({ error: 'PDF file not found in storage' }, 404);
+    }
+
+    const pdfBytes = await pdfObject.arrayBuffer();
+
+    // Import the autoMapPDF function
+    const { autoMapPDF } = await import('../lib/pdf-automap');
+
+    // Call AI AutoMap
+    const result = await autoMapPDF(pdfBytes, env.ANTHROPIC_API_KEY);
+
+    // Return the mapped fields ready for the field editor
+    return c.json({
+      success: true,
+      fields: result.fields,
+      stats: {
+        totalMapped: result.fields.length,
+        needsReview: result.fields.filter(f => f.needsReview).length,
+        unmapped: result.unmappedPDFFields.length,
+      },
+      unmappedFields: result.unmappedPDFFields,
+      warnings: result.warnings,
+    });
+
+  } catch (error) {
+    console.error('Error in AI AutoMap:', error);
+    return c.json({
+      error: 'Failed to auto-map PDF fields',
+      details: (error as Error).message
+    }, 500);
+  }
+});
+
 // ========== ASSIGNMENTS ENDPOINTS ==========
 
 // Get all assignments

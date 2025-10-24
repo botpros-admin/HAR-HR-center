@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Upload, FileText, Trash2, Edit, Eye, Plus, Search, Filter, MousePointer, Type, CheckSquare, Calendar, X, Save, Circle, Settings } from 'lucide-react';
+import { Upload, FileText, Trash2, Edit, Eye, Plus, Search, Filter, MousePointer, Type, CheckSquare, Calendar, X, Save, Circle, Settings, Sparkles } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { Toast, ToastContainer } from '@/components/Toast';
@@ -89,6 +89,49 @@ export default function TemplatesPage() {
       // Keep modal open to show the error
     }
   });
+
+  // AI AutoMap state
+  const [autoMapLoading, setAutoMapLoading] = useState<string | null>(null);
+  const [autoMappedFields, setAutoMappedFields] = useState<any>(null);
+
+  // AI AutoMap handler
+  const handleAutoMap = async (template: DocumentTemplate) => {
+    setAutoMapLoading(template.id);
+    showToast('AI AutoMap analyzing PDF...', 'info');
+
+    try {
+      const response = await fetch(`https://hartzell.work/api/admin/templates/${template.id}/automap`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.details || error.error || 'Failed to auto-map fields');
+      }
+
+      const result = await response.json();
+
+      showToast(`✨ AI AutoMap complete! ${result.stats.totalMapped} fields mapped ${result.stats.needsReview > 0 ? `(${result.stats.needsReview} need review)` : ''}`, 'success');
+
+      // Store the auto-mapped fields
+      setAutoMappedFields(result.fields);
+
+      // Open field editor with pre-loaded fields
+      setCurrentTemplate(template);
+      setEditorMode('edit');
+      setShowFieldEditor(true);
+
+    } catch (error: any) {
+      console.error('AI AutoMap error:', error);
+      showToast(`AI AutoMap failed: ${error.message}`, 'error');
+    } finally {
+      setAutoMapLoading(null);
+    }
+  };
 
   const templates = data?.templates || [];
 
@@ -252,16 +295,19 @@ export default function TemplatesPage() {
                 setShowFieldEditor(true);
               }}
               onEdit={() => {
+                setAutoMappedFields(null); // Clear auto-mapped fields
                 setCurrentTemplate(template);
                 setEditorMode('edit');
                 setShowFieldEditor(true);
               }}
+              onAutoMap={() => handleAutoMap(template)}
               onDelete={() => {
                 setTemplateToDelete(template.id);
                 setDeleteError(null);
                 setShowDeleteModal(true);
               }}
               isDeleting={deleteMutation.isPending}
+              isAutoMapping={autoMapLoading === template.id}
             />
           ))}
         </div>
@@ -288,14 +334,17 @@ export default function TemplatesPage() {
         <FieldEditorModal
           template={currentTemplate}
           mode={editorMode}
+          initialFields={autoMappedFields}
           onClose={() => {
             setShowFieldEditor(false);
             setCurrentTemplate(null);
+            setAutoMappedFields(null);
           }}
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: ['templates'] });
             setShowFieldEditor(false);
             setCurrentTemplate(null);
+            setAutoMappedFields(null);
           }}
         />
       )}
@@ -408,14 +457,18 @@ function TemplateCard({
   template,
   onView,
   onEdit,
+  onAutoMap,
   onDelete,
-  isDeleting
+  isDeleting,
+  isAutoMapping
 }: {
   template: DocumentTemplate;
   onView: () => void;
   onEdit: () => void;
+  onAutoMap: () => void;
   onDelete: () => void;
   isDeleting: boolean;
+  isAutoMapping: boolean;
 }) {
   const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [thumbnailLoading, setThumbnailLoading] = useState(true);
@@ -599,6 +652,18 @@ function TemplateCard({
             title="View fields"
           >
             <Eye className="w-4 h-4" />
+          </button>
+          <button
+            onClick={onAutoMap}
+            disabled={isAutoMapping}
+            className="p-2.5 bg-purple-600 text-white rounded-full hover:bg-purple-700 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed relative"
+            title="AI AutoMap - Automatically detect and place fields"
+          >
+            {isAutoMapping ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+            ) : (
+              <Sparkles className="w-4 h-4" />
+            )}
           </button>
           <button
             onClick={onEdit}
@@ -944,15 +1009,17 @@ interface Field {
 function FieldEditorModal({
   template,
   mode = 'edit',
+  initialFields,
   onClose,
   onSuccess
 }: {
   template: any;
   mode?: 'view' | 'edit';
+  initialFields?: any;
   onClose: () => void;
   onSuccess: () => void;
 }) {
-  const [fields, setFields] = useState<Field[]>([]);
+  const [fields, setFields] = useState<Field[]>(initialFields || []);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [containerRef, setContainerRef] = useState<HTMLDivElement | null>(null);

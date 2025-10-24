@@ -24,6 +24,7 @@ export interface Env {
   SESSION_SECRET: string;
   TURNSTILE_SECRET_KEY: string; // Cloudflare CAPTCHA
   RESEND_API_KEY: string; // Resend email service
+  ANTHROPIC_API_KEY: string; // Claude API for AI AutoMap
 
   // Environment variables
   BITRIX24_ENTITY_TYPE_ID: string;
